@@ -46,8 +46,10 @@ import com.israadev.nuxlauncher.core.horizon.HorizonMods
 import com.israadev.nuxlauncher.core.instance.InstanceManager
 import com.israadev.nuxlauncher.core.models.*
 import com.israadev.nuxlauncher.core.mods.CurseForgeApi
+import com.israadev.nuxlauncher.core.mods.ModUpdater
 import com.israadev.nuxlauncher.core.mods.NuxModManager
 import com.israadev.nuxlauncher.core.mods.WorldInfo
+import com.israadev.nuxlauncher.core.mods.WorldInstaller
 import com.israadev.nuxlauncher.core.settings.SettingsManager
 import com.israadev.nuxlauncher.ui.components.*
 import com.israadev.nuxlauncher.ui.theme.AmberUi
@@ -87,7 +89,7 @@ private fun isValidExtensionForType(itemType: String, filename: String, rust: Bo
     return when (itemType) {
         "mods" -> if (rust) lower.endsWith(".hmod") else lower.endsWith(".jar")
         "modpacks" -> lower.endsWith(".mrpack") || lower.endsWith(".zip")
-        "shaderpacks", "resourcepacks", "datapacks" -> lower.endsWith(".zip")
+        "shaderpacks", "resourcepacks", "datapacks", "worlds" -> lower.endsWith(".zip")
         else -> false
     }
 }
@@ -99,6 +101,7 @@ private fun getAllowedExtensionLabel(itemType: String, rust: Boolean = false): S
         "shaderpacks" -> ".zip (Shaderpack)"
         "resourcepacks" -> ".zip (Resource Pack)"
         "datapacks" -> ".zip (Datapack)"
+        "worlds" -> ".zip (World)"
         else -> "format yang didukung"
     }
 }
@@ -211,6 +214,11 @@ fun ModsScreen(
     var installedSearch by remember { mutableStateOf("") }
     var itemToDelete by remember { mutableStateOf<InstalledModItem?>(null) }
 
+    // Perbarui semua mod (hanya tab Mod di Manajemen Mod, bukan mesin Rust)
+    val modUpdate = remember(selectedInstance?.id) { ModUpdateState() }
+    val autoUpdateMods = SettingsManager.settings.collectAsState().value.autoUpdateMods
+    val modUpdateVisible = mainMode == "installed" && activeType == "mods" && !rustInstance && selectedInstance != null
+
     // Browse Modrinth state
     var browseQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Semua") }
@@ -224,13 +232,17 @@ fun ModsScreen(
     var browseSource by remember { mutableStateOf(NuxModManager.SOURCE_MODRINTH) }
     var showKeyDialog by remember { mutableStateOf(false) }
     var keyProblem by remember { mutableStateOf(false) }
-    val isCurseForge = browseSource == NuxModManager.SOURCE_CURSEFORGE && !rustInstance
+    // World hanya ada di CurseForge (Modrinth tidak punya jenis ini), jadi sumbernya dikunci di tab World
+    val worldsTab = activeType == WorldInstaller.ITEM_TYPE
+    val isCurseForge = (browseSource == NuxModManager.SOURCE_CURSEFORGE || worldsTab) && !rustInstance
     // Mesin Rust: mod selalu dari katalog Horizon; shader dan resource pack dari Horizon atau Modrinth (pilihan pengguna)
     var rustSource by remember { mutableStateOf(NuxModManager.SOURCE_HORIZON) }
     val rustMods = rustInstance && activeType == HorizonContent.TYPE_MODS
     val rustHorizon = rustInstance && (rustMods || rustSource == NuxModManager.SOURCE_HORIZON)
     val activeSource = if (rustInstance) {
         if (rustHorizon) NuxModManager.SOURCE_HORIZON else NuxModManager.SOURCE_MODRINTH
+    } else if (worldsTab) {
+        NuxModManager.SOURCE_CURSEFORGE
     } else {
         browseSource
     }
@@ -331,6 +343,19 @@ fun ModsScreen(
         }
     }
 
+    // Hasil pemeriksaan pembaruan jadi usang bila berkas mod berubah di luar pembaruan (diaktifkan/dinonaktifkan, dihapus)
+    LaunchedEffect(installedItems, isInstalledLoading) {
+        if (!isInstalledLoading) modUpdate.reconcile(installedItems.map { it.originalFilename }.toSet())
+    }
+
+    // Mode otomatis: periksa dan pasang pembaruan saat tab Mod di Manajemen Mod dibuka, paling sering sekali per 6 jam
+    LaunchedEffect(selectedInstance?.id, modUpdateVisible, autoUpdateMods) {
+        val inst = selectedInstance
+        if (autoUpdateMods && modUpdateVisible && inst != null && !modUpdate.busy && ModUpdater.isAutoCheckDue(context, inst.id)) {
+            modUpdate.startCheck(context, inst, scope, applyAfterCheck = true, onChanged = { reloadInstalled() })
+        }
+    }
+
     // Debounce search query
     var searchJob by remember { mutableStateOf<Job?>(null) }
     fun onQueryChanged(newQuery: String) {
@@ -384,7 +409,59 @@ fun ModsScreen(
                 if (validUris.isEmpty()) return@launch
 
                 // 2. Import file yang valid
-                if (activeType == "modpacks") {
+                if (activeType == WorldInstaller.ITEM_TYPE) {
+                    isImportingModpack = true
+                    var importedWorlds = 0
+                    var failedFiles = 0
+                    var lastWorld = ""
+                    var lastError: String? = null
+
+                    for ((uri, fileName) in validUris) {
+                        modpackImportName = fileName
+                        modpackImportStatus = "Menyalin file $fileName..."
+                        modpackImportCurrent = 0
+                        modpackImportTotal = 0
+
+                        val importRes = NuxModManager.importLocalFile(
+                            context = context,
+                            instance = inst,
+                            itemType = activeType,
+                            uri = uri,
+                            onProgress = { statusText, cur, tot ->
+                                modpackImportStatus = statusText
+                                modpackImportCurrent = cur
+                                modpackImportTotal = tot
+                            }
+                        )
+
+                        if (importRes.isSuccess) {
+                            // Nama world yang dibuat dipisah baris baru (satu arsip bisa berisi beberapa world)
+                            val names = importRes.getOrNull().orEmpty().split("\n").filter { it.isNotBlank() }
+                            importedWorlds += names.size
+                            lastWorld = names.lastOrNull().orEmpty()
+                        } else {
+                            failedFiles++
+                            lastError = importRes.exceptionOrNull()?.message
+                        }
+                    }
+
+                    isImportingModpack = false
+                    reloadInstalled()
+
+                    if (importedWorlds > 0 && failedFiles > 0) {
+                        Toast.makeText(
+                            context,
+                            "Berhasil mengimpor $importedWorlds world, $failedFiles file gagal diimpor!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else if (importedWorlds == 1 && lastWorld.isNotBlank()) {
+                        Toast.makeText(context, "World \"$lastWorld\" berhasil diimpor!", Toast.LENGTH_SHORT).show()
+                    } else if (importedWorlds > 0) {
+                        Toast.makeText(context, "Berhasil mengimpor $importedWorlds world!", Toast.LENGTH_SHORT).show()
+                    } else if (lastError != null) {
+                        Toast.makeText(context, "Gagal mengimpor world: $lastError", Toast.LENGTH_LONG).show()
+                    }
+                } else if (activeType == "modpacks") {
                     isImportingModpack = true
                     var successCount = 0
                     var lastError: String? = null
@@ -543,7 +620,11 @@ fun ModsScreen(
             if (downRes.isSuccess) {
                 val downloaded = downRes.getOrNull() ?: emptyList()
                 val depCount = (downloaded.size - 1).coerceAtLeast(0)
-                val msg = if (activeType == "modpacks") {
+                val msg = if (activeType == WorldInstaller.ITEM_TYPE) {
+                    // Untuk world, daftar hasil berisi nama folder world yang dibuat (bukan dependensi)
+                    if (downloaded.size > 1) "Berhasil memasang ${downloaded.size} world dari ${hit.title}!"
+                    else "World ${hit.title} berhasil dipasang!"
+                } else if (activeType == "modpacks") {
                     "Modpack ${hit.title} berhasil dipasang!"
                 } else if (depCount > 0) {
                     "Berhasil memasang ${hit.title} beserta $depCount dependensi!"
@@ -584,7 +665,10 @@ fun ModsScreen(
             if (res.isSuccess) {
                 val files = res.getOrNull() ?: emptyList()
                 val depCount = (files.size - 1).coerceAtLeast(0)
-                val msg = if (activeType == "modpacks") {
+                val msg = if (activeType == WorldInstaller.ITEM_TYPE) {
+                    if (files.size > 1) "Berhasil memasang ${files.size} world dari ${hit.title}!"
+                    else "World ${hit.title} berhasil dipasang!"
+                } else if (activeType == "modpacks") {
                     "Modpack ${hit.title} berhasil dipasang!"
                 } else if (depCount > 0) {
                     "Berhasil memasang ${hit.title} beserta $depCount dependensi!"
@@ -624,7 +708,7 @@ fun ModsScreen(
                 onSettings = onOpenSettings
             )
             if (mainMode == "browse") {
-                if (!rustInstance) ModsSourcePill(
+                if (!rustInstance && !worldsTab) ModsSourcePill(
                     selectedSource = browseSource,
                     onSelect = { src ->
                         if (src != browseSource) {
@@ -639,7 +723,7 @@ fun ModsScreen(
                             }
                         }
                     }
-                ) else if (!rustMods) {
+                ) else if (rustInstance && !rustMods) {
                     // Shader dan resource pack mesin Rust: katalog Horizon atau Modrinth (mod hanya dari Horizon)
                     RustSourcePill(
                         selectedSource = rustSource,
@@ -795,6 +879,23 @@ fun ModsScreen(
                 // DAFTAR
                 // =====================================================================
                 if (mainMode == "installed") {
+                    if (modUpdateVisible) {
+                        ModUpdateBar(
+                            state = modUpdate,
+                            autoEnabled = autoUpdateMods,
+                            onCheck = {
+                                modUpdate.startCheck(context, currentInst, scope, applyAfterCheck = false, onChanged = { reloadInstalled() })
+                            },
+                            onApplyAll = {
+                                modUpdate.startApply(context, currentInst, scope, onChanged = { reloadInstalled() })
+                            },
+                            onCancel = { modUpdate.cancel() },
+                            onAutoChange = { on ->
+                                SettingsManager.updateSettings(context, SettingsManager.settings.value.copy(autoUpdateMods = on))
+                            },
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
                     val filteredInstalled = remember(installedItems, installedSearch) {
                         if (installedSearch.isBlank()) installedItems
                         else installedItems.filter {
@@ -810,10 +911,12 @@ fun ModsScreen(
                             icon = Icons.Outlined.FolderOpen,
                             title = if (activeType == "datapacks" && worlds.isEmpty())
                                 "Belum ada world di instance ini. Buka game untuk membuat world terlebih dahulu."
+                            else if (installedSearch.isBlank() && worldsTab)
+                                "Belum ada world di instance ini. Unduh dari CurseForge atau impor file .zip."
                             else if (installedSearch.isBlank())
                                 "Belum ada ${activeType} terpasang di instance ini"
                             else "Tidak ada item yang cocok",
-                            actionLabel = "Jelajahi Modrinth",
+                            actionLabel = if (worldsTab) "Jelajahi CurseForge" else "Jelajahi Modrinth",
                             onAction = { onOpenBrowse(activeType) }
                         )
                     } else {
@@ -830,7 +933,21 @@ fun ModsScreen(
                                 InstalledItemRow(
                                     item = item,
                                     deletable = !rustModItem || HorizonMods.removable(item),
-                                    subtitle = if (rustModItem && !HorizonMods.removable(item)) item.description else null,
+                                    subtitle = if (worldsTab) {
+                                        // World: tanggal terakhir dimainkan (disimpan di kolom versi) dan ukuran folder
+                                        if (item.version.isBlank()) formatBytes(item.sizeBytes)
+                                        else "Terakhir dimainkan ${item.version} · ${formatBytes(item.sizeBytes)}"
+                                    } else if (rustModItem && !HorizonMods.removable(item)) {
+                                        item.description
+                                    } else {
+                                        null
+                                    },
+                                    showToggle = !worldsTab,
+                                    updateText = if (modUpdateVisible) {
+                                        modUpdate.updateFor(item.originalFilename)?.let { "${it.fromVersion} → ${it.toVersion}" }
+                                    } else {
+                                        null
+                                    },
                                     onToggle = {
                                         scope.launch {
                                             if (rustInstance) {
@@ -1054,7 +1171,7 @@ fun ModsScreen(
                 showKeyDialog = false
                 keyProblem = false
                 if (CurseForgeApi.isConfigured()) {
-                    if (browseSource != NuxModManager.SOURCE_CURSEFORGE) {
+                    if (browseSource != NuxModManager.SOURCE_CURSEFORGE && !worldsTab) {
                         // Berganti sumber memicu pencarian otomatis (LaunchedEffect di atas)
                         browseSource = NuxModManager.SOURCE_CURSEFORGE
                         selectedCategory = "Semua"
@@ -1102,7 +1219,7 @@ fun ModsScreen(
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = if (activeType == "modpacks") "Hapus modpack?" else "Hapus ${item.category}?",
+                    text = if (activeType == "modpacks") "Hapus modpack?" else if (activeType == WorldInstaller.ITEM_TYPE) "Hapus world?" else "Hapus ${item.category}?",
                     fontWeight = FontWeight.Black,
                     fontSize = 16.sp,
                     color = NuxColors.DarkGray
@@ -1111,6 +1228,8 @@ fun ModsScreen(
                 Text(
                     text = if (activeType == "modpacks") {
                         "Yakin ingin menghapus modpack \"${item.name}\"? Semua mod yang terpasang dari modpack ini juga akan dihapus dari instance."
+                    } else if (activeType == WorldInstaller.ITEM_TYPE) {
+                        "Yakin ingin menghapus world \"${item.name}\"? Semua bangunan dan progres di dalamnya hilang permanen dan tidak bisa dikembalikan."
                     } else {
                         "Yakin ingin menghapus \"${item.name}\" dari instance ini?"
                     },
@@ -1137,11 +1256,13 @@ fun ModsScreen(
                             if (selectedInstance != null) {
                                 scope.launch {
                                     val targetWorld = if (activeType == "datapacks") selectedWorld else null
-                                    NuxModManager.deleteItem(context, selectedInstance!!, activeType, item, targetWorld)
+                                    val deleted = NuxModManager.deleteItem(context, selectedInstance!!, activeType, item, targetWorld)
                                     itemToDelete = null
                                     reloadInstalled()
                                     val toastMsg = if (activeType == "modpacks") {
                                         "Modpack dan semua mod berhasil dihapus!"
+                                    } else if (activeType == WorldInstaller.ITEM_TYPE && !deleted) {
+                                        "Gagal menghapus world. Pastikan game sedang tidak berjalan."
                                     } else {
                                         "${item.name} berhasil dihapus!"
                                     }
@@ -1163,6 +1284,7 @@ fun ModsScreen(
 
     // --- PROGRES IMPOR MODPACK ---
     if (isImportingModpack) {
+        val importingWorld = activeType == WorldInstaller.ITEM_TYPE
         NuxDialog(
             onDismissRequest = { /* Tidak bisa ditutup saat sedang mengunduh */ },
             modifier = Modifier
@@ -1194,7 +1316,7 @@ fun ModsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Mengimpor & memasang modpack",
+                    text = if (importingWorld) "Mengimpor world" else "Mengimpor & memasang modpack",
                     fontWeight = FontWeight.Black,
                     fontSize = 15.5.sp,
                     color = NuxColors.DarkGray
@@ -1215,7 +1337,13 @@ fun ModsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = if (modpackImportStatus.isNotBlank()) modpackImportStatus else "Membaca daftar mod dan mengunduh file...",
+                    text = if (modpackImportStatus.isNotBlank()) {
+                        modpackImportStatus
+                    } else if (importingWorld) {
+                        "Membaca arsip world..."
+                    } else {
+                        "Membaca daftar mod dan mengunduh file..."
+                    },
                     fontSize = 12.sp,
                     color = NuxColors.GrayNeutral,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -1239,7 +1367,7 @@ fun ModsScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "$modpackImportCurrent / $modpackImportTotal file mod",
+                        text = if (importingWorld) "$modpackImportCurrent / $modpackImportTotal file" else "$modpackImportCurrent / $modpackImportTotal file mod",
                         fontSize = 11.sp,
                         color = NuxColors.GrayNeutral
                     )
@@ -1257,7 +1385,11 @@ fun ModsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Launcher sedang membaca daftar mod dan mengunduh modpack. Mohon tunggu.",
+                    text = if (importingWorld) {
+                        "Launcher sedang memeriksa dan mengekstrak world. Mohon tunggu."
+                    } else {
+                        "Launcher sedang membaca daftar mod dan mengunduh modpack. Mohon tunggu."
+                    },
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
                     color = NuxColors.GrayNeutral.copy(alpha = 0.75f),
@@ -1288,47 +1420,13 @@ fun ModsScreen(
         )
     }
 
-    // --- PRATINJAU GAMBAR ---
+    // --- PENAMPIL SCREENSHOT (layar penuh, gambar tidak dipotong, bisa digeser) ---
     previewGalleryUrl?.let { url ->
-        NuxDialog(onDismissRequest = { previewGalleryUrl = null }, compact = true) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Tangkapan layar",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 15.sp,
-                        color = NuxColors.DarkGray
-                    )
-                    ModsIconButton(
-                        icon = Icons.Outlined.Close,
-                        description = "Tutup",
-                        onClick = { previewGalleryUrl = null }
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                NuxNetworkImage(
-                    model = url,
-                    contentDescription = "Pratinjau gambar",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .border(NuxSizes.GlassBorder, NuxColors.CardBorder, RoundedCornerShape(14.dp)),
-                    shape = RoundedCornerShape(14.dp),
-                    maxSidePx = 1280,
-                    showSpinner = true
-                )
-            }
-        }
+        ModGalleryViewer(
+            gallery = detailProject?.gallery ?: emptyList(),
+            initialUrl = url,
+            onClose = { previewGalleryUrl = null }
+        )
     }
 }
 
@@ -1382,7 +1480,8 @@ private val MODS_TYPE_ITEMS = listOf(
     Triple("mods", "Mod", Icons.Outlined.ViewInAr),
     Triple("shaderpacks", "Shader", Icons.Outlined.LightMode),
     Triple("resourcepacks", "Resource Pack", Icons.Outlined.Image),
-    Triple("datapacks", "Datapack", Icons.Outlined.Public)
+    Triple("datapacks", "Datapack", Icons.Outlined.Public),
+    Triple("worlds", "World", Icons.Outlined.Landscape)
 )
 
 private val MODS_SORT_OPTIONS = listOf(
@@ -1408,6 +1507,7 @@ private fun modsTypeShortLabel(type: String): String = when (type) {
     "shaderpacks" -> "Shader"
     "resourcepacks" -> "Resource"
     "datapacks" -> "Datapack"
+    "worlds" -> "World"
     else -> "Mod"
 }
 
@@ -1416,6 +1516,7 @@ private fun modsSearchPlaceholder(type: String): String = when (type) {
     "shaderpacks" -> "Cari shader..."
     "resourcepacks" -> "Cari resource pack..."
     "datapacks" -> "Cari datapack..."
+    "worlds" -> "Cari world di CurseForge..."
     else -> "Cari mod..."
 }
 
@@ -1836,7 +1937,9 @@ private fun InstalledItemRow(
     onToggle: () -> Unit,
     onDelete: () -> Unit,
     deletable: Boolean = true,
-    subtitle: String? = null
+    subtitle: String? = null,
+    showToggle: Boolean = true,
+    updateText: String? = null
 ) {
     val shape = RoundedCornerShape(24.dp)
     Row(
@@ -1875,9 +1978,17 @@ private fun InstalledItemRow(
                         textColor = NuxColors.GrayNeutral
                     )
                 }
+                if (updateText != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    NuxBadge(
+                        text = "ADA UPDATE",
+                        backgroundColor = AmberUi.Accent.copy(alpha = 0.28f),
+                        textColor = AmberUi.AccentSoft
+                    )
+                }
             }
             Text(
-                text = subtitle ?: "${item.filename} · ${formatBytes(item.sizeBytes)}",
+                text = subtitle ?: updateText ?: "${item.filename} · ${formatBytes(item.sizeBytes)}",
                 fontSize = 12.sp,
                 color = AmberUi.TextDim,
                 maxLines = 1,
@@ -1887,17 +1998,20 @@ private fun InstalledItemRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        Switch(
-            checked = item.isEnabled,
-            onCheckedChange = { onToggle() },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = AmberUi.Accent,
-                checkedBorderColor = AmberUi.AccentEdge,
-                uncheckedThumbColor = AmberUi.TextDim,
-                uncheckedTrackColor = NuxColors.SurfaceElevated
+        // World tidak punya saklar aktif/nonaktif (cukup dihapus bila tidak dipakai)
+        if (showToggle) {
+            Switch(
+                checked = item.isEnabled,
+                onCheckedChange = { onToggle() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = AmberUi.Accent,
+                    checkedBorderColor = AmberUi.AccentEdge,
+                    uncheckedThumbColor = AmberUi.TextDim,
+                    uncheckedTrackColor = NuxColors.SurfaceElevated
+                )
             )
-        )
+        }
 
         if (deletable) {
             ModsIconButton(
@@ -1975,6 +2089,35 @@ private fun ModrinthHitRow(
                 overflow = TextOverflow.Ellipsis
             )
 
+            // Penulis dan jumlah unduhan
+            Spacer(modifier = Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "oleh ${hit.author ?: "Komunitas"}",
+                    fontSize = 12.sp,
+                    color = AmberUi.TextDim.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (hit.downloads > 0) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Icon(
+                        imageVector = Icons.Outlined.Download,
+                        contentDescription = null,
+                        tint = AmberUi.TextDim.copy(alpha = 0.8f),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = formatCompactNumber(hit.downloads),
+                        fontSize = 12.sp,
+                        color = AmberUi.TextDim.copy(alpha = 0.8f),
+                        maxLines = 1
+                    )
+                }
+            }
+
             if (tags.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
@@ -2022,431 +2165,6 @@ private fun ModrinthHitRow(
     }
 }
 
-/**
- * Jendela detail dua panel: kiri = identitas proyek + tombol pasang (selalu terlihat),
- * kanan = tab Ringkasan / Versi yang bisa digulir.
- */
-@Composable
-private fun ModDetailDialog(
-    hit: ModrinthSearchHit,
-    project: ModrinthProject?,
-    versions: List<ModrinthVersion>,
-    selectedVersion: ModrinthVersion?,
-    isLoading: Boolean,
-    isInstalling: Boolean,
-    progressText: String,
-    isInstalled: Boolean,
-    tab: String,
-    instance: Instance?,
-    onTab: (String) -> Unit,
-    onPickVersion: (ModrinthVersion) -> Unit,
-    onOpenGallery: (String) -> Unit,
-    onInstall: () -> Unit,
-    onClose: () -> Unit
-) {
-    val typeColor = when (hit.projectType) {
-        "mod" -> NuxColors.Yellow
-        "modpack" -> NuxColors.PurpleDark
-        "resourcepack" -> NuxColors.SkyBlueDark
-        else -> NuxColors.AmberDark
-    }
-
-    NuxDialog(
-        onDismissRequest = { if (!isInstalling) onClose() },
-        modifier = Modifier.fillMaxWidth(0.92f),
-        fillMaxHeight = true,
-        compact = true
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // ---------------- KIRI ----------------
-            Column(
-                modifier = Modifier
-                    .weight(0.36f)
-                    .fillMaxHeight()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    NuxNetworkImage(
-                        model = hit.iconUrl,
-                        contentDescription = hit.title,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .border(NuxSizes.GlassBorder, NuxColors.CardBorder, RoundedCornerShape(14.dp)),
-                        fallbackInitials = hit.title.take(2).uppercase(),
-                        shape = RoundedCornerShape(14.dp),
-                        maxSidePx = 192
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = hit.title,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 17.sp,
-                        lineHeight = 22.sp,
-                        color = NuxColors.DarkGray,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "oleh ${hit.author ?: "Komunitas"}",
-                        fontSize = 11.sp,
-                        color = NuxColors.GrayNeutral
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NuxBadge(
-                            text = hit.projectType.uppercase(),
-                            backgroundColor = typeColor.copy(alpha = 0.16f),
-                            textColor = typeColor,
-                            borderColor = typeColor.copy(alpha = 0.4f)
-                        )
-                        NuxBadge(
-                            text = "📥 ${formatCompactNumber(hit.downloads)}",
-                            backgroundColor = NuxColors.SurfaceElevated,
-                            textColor = NuxColors.GrayNeutral
-                        )
-                    }
-                    if (selectedVersion != null && !isInstalled) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Versi dipilih",
-                            fontSize = 11.sp,
-                            color = NuxColors.GrayNeutral
-                        )
-                        Text(
-                            text = selectedVersion.name.ifBlank { selectedVersion.versionNumber },
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NuxColors.DarkGray,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (isInstalling) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        AmberSpinner(
-                            color = NuxColors.Yellow,
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = progressText.ifBlank { "Sedang mengunduh dan memasang..." },
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            color = NuxColors.Yellow,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                } else if (isInstalled) {
-                    val okShape = RoundedCornerShape(20.dp)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                            .clip(okShape)
-                            .background(NuxColors.YellowPale, okShape)
-                            .border(NuxSizes.GlassBorder, NuxColors.Yellow.copy(alpha = 0.45f), okShape),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Check,
-                            contentDescription = null,
-                            tint = NuxColors.Yellow,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Sudah terpasang",
-                            color = NuxColors.Yellow,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 13.sp
-                        )
-                    }
-                } else {
-                    NuxButton(
-                        onClick = onInstall,
-                        backgroundColor = NuxColors.Yellow,
-                        enabled = versions.isNotEmpty(),
-                        cornerRadius = 20.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (hit.projectType == "modpack") "Pasang modpack" else "Pasang ke instance",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-
-            // ---------------- KANAN ----------------
-            Column(
-                modifier = Modifier
-                    .weight(0.64f)
-                    .fillMaxHeight()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        SettingChip(
-                            text = "Ringkasan",
-                            selected = tab == "overview",
-                            onClick = { onTab("overview") }
-                        )
-                        SettingChip(
-                            text = "Versi (${versions.size})",
-                            selected = tab == "versions",
-                            onClick = { onTab("versions") }
-                        )
-                    }
-                    ModsIconButton(
-                        icon = Icons.Outlined.Close,
-                        description = "Tutup",
-                        onClick = onClose,
-                        enabled = !isInstalling
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    if (isLoading) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(140.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AmberSpinner(color = NuxColors.Yellow, modifier = Modifier.size(28.dp))
-                        }
-                    } else if (tab == "overview") {
-                        val galleryList = project?.gallery ?: emptyList()
-                        if (galleryList.isNotEmpty()) {
-                            Text(
-                                text = "Tangkapan layar",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = NuxColors.GrayNeutral
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                items(galleryList) { gal ->
-                                    Box(
-                                        modifier = Modifier
-                                            .width(160.dp)
-                                            .height(92.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(NuxColors.SurfaceWhite)
-                                            .border(NuxSizes.GlassBorder, NuxColors.CardBorder, RoundedCornerShape(12.dp))
-                                            .clickable { onOpenGallery(gal.url) }
-                                    ) {
-                                        NuxNetworkImage(
-                                            model = gal.url,
-                                            contentDescription = gal.title ?: "Screenshot",
-                                            modifier = Modifier.fillMaxSize(),
-                                            shape = RoundedCornerShape(12.dp),
-                                            maxSidePx = 400,
-                                            showSpinner = true
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                        }
-
-                        Text(
-                            text = "Deskripsi",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            color = NuxColors.GrayNeutral
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = project?.description ?: hit.description ?: "Tidak ada ringkasan deskripsi.",
-                            fontSize = 13.sp,
-                            color = NuxColors.DarkGray.copy(alpha = 0.88f),
-                            lineHeight = 18.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        val allLoaders = (project?.loaders ?: hit.categories ?: emptyList()).distinct()
-                        if (allLoaders.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                allLoaders.take(6).forEach { tag ->
-                                    NuxBadge(
-                                        text = tag.uppercase(),
-                                        backgroundColor = NuxColors.SurfaceElevated,
-                                        textColor = NuxColors.GrayNeutral
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        if (versions.isEmpty()) {
-                            val warnShape = RoundedCornerShape(12.dp)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(NuxColors.ErrorRed.copy(alpha = 0.12f), warnShape)
-                                    .border(NuxSizes.GlassBorder, NuxColors.ErrorRed.copy(alpha = 0.4f), warnShape)
-                                    .padding(12.dp)
-                            ) {
-                                Text(
-                                    text = "Tidak ada versi yang didukung",
-                                    color = NuxColors.ErrorRed,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Proyek ini tidak punya rilis yang cocok dengan Minecraft ${instance?.mcVersion ?: ""} (${(instance?.loader ?: "vanilla").uppercase()}).",
-                                    color = NuxColors.GrayNeutral,
-                                    fontSize = 11.sp,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                versions.forEach { ver ->
-                                    val isPicked = selectedVersion?.id == ver.id
-                                    val rowShape = RoundedCornerShape(14.dp)
-                                    val verColor = when (ver.versionType) {
-                                        "release" -> NuxColors.Yellow
-                                        "beta" -> NuxColors.AmberDark
-                                        else -> NuxColors.ErrorRed
-                                    }
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(rowShape)
-                                            .background(if (isPicked) NuxColors.YellowPale else NuxColors.SurfaceWhite, rowShape)
-                                            .border(
-                                                NuxSizes.GlassBorder,
-                                                if (isPicked) NuxColors.Yellow.copy(alpha = 0.55f) else NuxColors.CardBorder,
-                                                rowShape
-                                            )
-                                            .clickable { onPickVersion(ver) }
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isPicked) NuxColors.Yellow else Color.Transparent)
-                                                .border(
-                                                    NuxSizes.GlassBorder,
-                                                    if (isPicked) NuxColors.Yellow else NuxColors.GrayNeutral,
-                                                    CircleShape
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (isPicked) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Check,
-                                                    contentDescription = null,
-                                                    tint = NuxColors.Ink,
-                                                    modifier = Modifier.size(11.dp)
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = ver.name.ifBlank { ver.versionNumber },
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                color = NuxColors.DarkGray,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "Versi ${ver.versionNumber} · MC ${ver.gameVersions.joinToString(", ")}",
-                                                fontSize = 11.sp,
-                                                color = NuxColors.GrayNeutral,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        NuxBadge(
-                                            text = ver.versionType.uppercase(),
-                                            backgroundColor = verColor.copy(alpha = 0.16f),
-                                            textColor = verColor,
-                                            borderColor = verColor.copy(alpha = 0.4f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = if (hit.projectType == "modpack") {
-                            "Modpack diekstrak langsung ke instance (overrides, konfigurasi, dan manifest)."
-                        } else {
-                            "Dependensi wajib ikut terpasang otomatis."
-                        },
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp,
-                        color = NuxColors.GrayNeutral
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-        }
-    }
-}
-
-/** Kolom cari berbentuk pil 38dp dengan ikon kaca pembesar dan tombol hapus teks. */
 private fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB")

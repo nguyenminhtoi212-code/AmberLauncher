@@ -24,6 +24,13 @@ data class LauncherSettings(
     // Menggeser jari dari tombol serang/pakai/lompat ikut memutar kamera. Bawaan mati: jari yang
     // sedikit bergeser saat menahan tombol (PvP) tidak boleh menggeser pandangan.
     val buttonLookDrag: Boolean = false,
+    // Geser antar tombol: menggeser jari dari satu tombol keyboard ke tombol lain (mis. W ke D) langsung menekan
+    // tombol yang dilewati tanpa mengangkat jari. Bawaan nyala. Nilai ini juga dipakai pengguna lama: tanpa kolom
+    // ini di berkas pengaturan tersimpan, bawaan di sini yang berlaku.
+    val buttonSlide: Boolean = true,
+    // Discord Rich Presence ("Bermain AmberLauncher" di profil Discord). Bawaan MATI: pemain memilih sendiri.
+    // Hanya berarti pada build yang membawa SDK Discord (BuildConfig.HAS_DISCORD_SDK).
+    val discordRpcEnabled: Boolean = false,
     // Eksperimental, bawaan mati. Bila modnya terpasang dan tersambung, sentuhan juga diteruskan ke mod
     // sementara tombol dan mouse virtual launcher tetap aktif. Namanya sengaja baru supaya nilai "aktif"
     // dari versi sebelumnya tidak terbawa.
@@ -71,6 +78,8 @@ data class LauncherSettings(
     // Permukaan game selalu TextureView (bukan SurfaceView). Perbaikan bila tampilan game terputar 90 derajat
     // di HP yang layar alaminya portrait; TextureView sedikit lebih berat (bawaan mati).
     val forceTextureView: Boolean = false,
+    // Tampilan angka FPS dan RAM di layar game. Dimatikan di sini atau lewat menu dalam game (ketuk angkanya).
+    val showFpsHud: Boolean = true,
     // HP RAM kecil: "auto" (bawaan launcher), "serial", atau "default"
     // (tanpa flag GC tambahan dari launcher).
     val generalGcMode: String = "auto",
@@ -98,6 +107,10 @@ data class LauncherSettings(
     // Kunci API CurseForge milik pengguna (diisi dari layar Mod). Kosong = pakai kunci bawaan build bila ada.
     val curseForgeApiKey: String = "",
 
+    // Perbarui mod otomatis saat Manajemen Mod (tab Mod) dibuka, paling sering sekali per 6 jam per instance.
+    // Bawaan mati: mod yang berubah sendiri bisa memutus dunia atau modpack yang sedang dimainkan.
+    val autoUpdateMods: Boolean = false,
+
     // Pembaruan aplikasi
     val autoCheckUpdates: Boolean = true, // cek rilis baru di GitHub setiap launcher dibuka
 
@@ -106,6 +119,11 @@ data class LauncherSettings(
     val accentColor: String = "navy",
     val uiStyle: String = "default",
     val bgDim: Int = 50,
+
+    // Efek salju (suasana Natal): bawaan mati. Di Beranda lebat; di layar lain lebih sedikit dan redup
+    // seperti di dalam ruangan. Bisa dinyalakan di Pengaturan > Tampilan.
+    val snowEnabled: Boolean = false,
+    val snowAmount: Int = 60, // 10 - 100
 
     // Gelombang penyederhanaan bawaan yang sudah diterapkan ke berkas pengaturan ini (0 = belum
     // pernah). Dipakai SettingsManager supaya perubahan bawaan hanya diterapkan sekali.

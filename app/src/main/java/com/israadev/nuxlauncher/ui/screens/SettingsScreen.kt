@@ -55,6 +55,7 @@ import com.israadev.nuxlauncher.core.account.AccountManager
 import com.israadev.nuxlauncher.core.controls.ControlLayoutIO
 import com.israadev.nuxlauncher.core.controls.ControlLayoutManager
 import com.israadev.nuxlauncher.core.device.DeviceProfiles
+import com.israadev.nuxlauncher.BuildConfig
 import com.israadev.nuxlauncher.core.models.LauncherSettings
 import com.israadev.nuxlauncher.core.renderer.NuxRendererRegistry
 import com.israadev.nuxlauncher.core.renderer.NuxRendererPluginManager
@@ -67,6 +68,7 @@ import com.israadev.nuxlauncher.ui.components.*
 import com.israadev.nuxlauncher.ui.dialogs.NuxRendererV2ConfigDialog
 import com.israadev.nuxlauncher.ui.dialogs.NuxAboutDialog
 import com.israadev.nuxlauncher.ui.dialogs.NuxImportLayoutDialog
+import com.israadev.nuxlauncher.ui.dialogs.NuxControlPresetsDialog
 import com.israadev.nuxlauncher.ui.theme.NuxColors
 import com.israadev.nuxlauncher.ui.theme.NuxSizes
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +90,7 @@ fun SettingsScreen(
     val currentSettings by SettingsManager.settings.collectAsState()
 
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showControlPresets by remember { mutableStateOf(false) }
 
     // Ekspor/impor layout kontrol lewat pemilih berkas sistem. Baca/tulis berkas dan penyimpanan
     // dikerjakan di thread IO; layar hanya menyimpan hasil pemeriksaan sampai pengguna menyetujui.
@@ -138,6 +141,8 @@ fun SettingsScreen(
     var touchAttack by remember(currentSettings.touchAttackEnabled) { mutableStateOf(currentSettings.touchAttackEnabled) }
     var hotbarTouch by remember(currentSettings.hotbarTouchEnabled) { mutableStateOf(currentSettings.hotbarTouchEnabled) }
     var buttonLookDrag by remember(currentSettings.buttonLookDrag) { mutableStateOf(currentSettings.buttonLookDrag) }
+    var buttonSlide by remember(currentSettings.buttonSlide) { mutableStateOf(currentSettings.buttonSlide) }
+    var discordRpc by remember(currentSettings.discordRpcEnabled) { mutableStateOf(currentSettings.discordRpcEnabled) }
     var touchControllerEnabled by remember(currentSettings.touchControllerEnabled) { mutableStateOf(currentSettings.touchControllerEnabled) }
     var mouseSizeDp by remember(currentSettings.mouseSizeDp) { mutableIntStateOf(currentSettings.mouseSizeDp) }
     var physicalSystemPointer by remember(currentSettings.physicalMouseSystemPointer) { mutableStateOf(currentSettings.physicalMouseSystemPointer) }
@@ -180,6 +185,8 @@ fun SettingsScreen(
     var accentId by remember(currentSettings.accentColor) { mutableStateOf(currentSettings.accentColor) }
     var uiStyleId by remember(currentSettings.uiStyle) { mutableStateOf(currentSettings.uiStyle) }
     var bgDim by remember(currentSettings.bgDim) { mutableIntStateOf(currentSettings.bgDim) }
+    var snowOn by remember(currentSettings.snowEnabled) { mutableStateOf(currentSettings.snowEnabled) }
+    var snowAmount by remember(currentSettings.snowAmount) { mutableIntStateOf(currentSettings.snowAmount.coerceIn(10, 100)) }
     var bgPauseOnPowerSave by remember(currentSettings.homeBgPauseOnPowerSave) { mutableStateOf(currentSettings.homeBgPauseOnPowerSave) }
     var bgSound by remember(currentSettings.homeBgSound) { mutableStateOf(currentSettings.homeBgSound) }
     var bgVolume by remember(currentSettings.homeBgVolume) { mutableIntStateOf(currentSettings.homeBgVolume) }
@@ -203,6 +210,8 @@ fun SettingsScreen(
             touchAttackEnabled = touchAttack,
             hotbarTouchEnabled = hotbarTouch,
             buttonLookDrag = buttonLookDrag,
+            buttonSlide = buttonSlide,
+            discordRpcEnabled = discordRpc,
             touchControllerEnabled = touchControllerEnabled,
             mouseSizeDp = mouseSizeDp,
             physicalMouseSystemPointer = physicalSystemPointer,
@@ -230,7 +239,9 @@ fun SettingsScreen(
             homeAmbientIntensity = ambientIntensity,
             accentColor = accentId,
             uiStyle = uiStyleId,
-            bgDim = bgDim
+            bgDim = bgDim,
+            snowEnabled = snowOn,
+            snowAmount = snowAmount
         )
         SettingsManager.updateSettings(context, updated)
     }
@@ -264,7 +275,9 @@ fun SettingsScreen(
         Tr.ES to "Espa\u00f1ol",
         Tr.VI to "Ti\u1ebfng Vi\u1ec7t",
         Tr.PT to "Portugu\u00eas (Brasil)",
-        Tr.TH to "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22"
+        Tr.TH to "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22",
+        Tr.ZH to "\u7b80\u4f53\u4e2d\u6587",
+        Tr.FIL to "Filipino"
     )
 
     Column(
@@ -749,9 +762,53 @@ fun SettingsScreen(
                                         fontWeight = FontWeight.Black
                                     )
                                 }
+                                NuxButton(
+                                    onClick = { showControlPresets = true },
+                                    backgroundColor = Color.Transparent,
+                                    cornerRadius = 20.dp,
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Bookmarks,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Preset",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
                             }
                         }
 
+                        }
+
+                        SettingsGroup("Tampilan di game") {
+                        SettingSwitchRow(
+                            title = "Tampilkan FPS dan RAM",
+                            desc = "Angka FPS dan pemakaian RAM di sudut layar game. Ketuk angkanya di dalam game untuk membuka menu dan mematikannya.",
+                            checked = currentSettings.showFpsHud,
+                            onCheckedChange = { on ->
+                                SettingsManager.updateSettings(context, SettingsManager.settings.value.copy(showFpsHud = on))
+                            }
+                        )
+                        }
+
+                        // Hanya ada di build yang membawa SDK Discord (dibangun dari workflow resmi dengan SDK_TOKEN).
+                        if (BuildConfig.HAS_DISCORD_SDK) {
+                            SettingsGroup("Discord") {
+                                SettingSwitchRow(
+                                    title = "Discord Rich Presence",
+                                    desc = "Menampilkan AmberLauncher beserta versi Minecraft dan loader di profil Discord saat bermain. Nama instance dan akunmu tidak ikut. Butuh aplikasi Discord terpasang dan sudah login di HP ini; tidak memakai login atau token. Tidak untuk pengguna di bawah 13 tahun. Berlaku mulai game berikutnya.",
+                                    checked = discordRpc,
+                                    onCheckedChange = {
+                                        discordRpc = it
+                                        commitSettings()
+                                    }
+                                )
+                            }
                         }
 
                         SettingsGroup("Kontrol sentuh") {
@@ -781,6 +838,16 @@ fun SettingsScreen(
                             checked = buttonLookDrag,
                             onCheckedChange = {
                                 buttonLookDrag = it
+                                commitSettings()
+                            }
+                        )
+                        SettingDivider()
+                        SettingSwitchRow(
+                            title = "Geser antar tombol",
+                            desc = "Menggeser jari dari satu tombol ke tombol lain (mis. dari W ke D) langsung menekan tombol yang dilewati, tanpa mengangkat jari. Tombol pukul dan pakai tidak ikut.",
+                            checked = buttonSlide,
+                            onCheckedChange = {
+                                buttonSlide = it
                                 commitSettings()
                             }
                         )
@@ -1065,6 +1132,32 @@ fun SettingsScreen(
                             )
                         }
                         }
+
+                        SettingsGroup("Efek") {
+                            SettingSwitchRow(
+                                title = "Efek salju",
+                                desc = "Salju turun di Beranda dan layar lain. Bawaan mati.",
+                                checked = snowOn,
+                                onCheckedChange = {
+                                    snowOn = it
+                                    commitSettings()
+                                }
+                            )
+                            if (snowOn) {
+                                SettingDivider()
+                                SettingSliderRow(
+                                    title = "Jumlah salju",
+                                    valueText = "$snowAmount%",
+                                    value = snowAmount.toFloat(),
+                                    valueRange = 10f..100f,
+                                    steps = 8,
+                                    onValueChange = {
+                                        snowAmount = ((it / 10f).roundToInt() * 10).coerceIn(10, 100)
+                                        commitSettings()
+                                    }
+                                )
+                            }
+                        }
                     }
 
                     // ===================== TENTANG =====================
@@ -1103,6 +1196,8 @@ fun SettingsScreen(
                     touchAttack = reset.touchAttackEnabled
                     hotbarTouch = reset.hotbarTouchEnabled
                     buttonLookDrag = reset.buttonLookDrag
+                    buttonSlide = reset.buttonSlide
+                    discordRpc = reset.discordRpcEnabled
                     touchControllerEnabled = reset.touchControllerEnabled
                     mouseSizeDp = reset.mouseSizeDp
                     physicalSystemPointer = reset.physicalMouseSystemPointer
@@ -1125,6 +1220,8 @@ fun SettingsScreen(
                     accentId = reset.accentColor
                     uiStyleId = reset.uiStyle
                     bgDim = reset.bgDim
+                    snowOn = reset.snowEnabled
+                    snowAmount = reset.snowAmount
                     AmberUi.setAccent(reset.accentColor)
                     AmberUi.setStyle(reset.uiStyle)
                     Toast.makeText(context, "Pengaturan di-reset ke default!", Toast.LENGTH_SHORT).show()
@@ -1294,7 +1391,7 @@ fun SettingsScreen(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Settings,
-                                                        contentDescription = "Konfigurasi ${rendererItem.displayName}",
+                                                        contentDescription = Tr.t("Konfigurasi ${rendererItem.displayName}"),
                                                         tint = NuxColors.SageGreen,
                                                         modifier = Modifier.size(13.dp)
                                                     )
@@ -1475,6 +1572,13 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { pendingImport = null }
+        )
+    }
+
+    if (showControlPresets) {
+        NuxControlPresetsDialog(
+            onDismiss = { showControlPresets = false },
+            onOpenEditor = onOpenGuiEditor
         )
     }
 

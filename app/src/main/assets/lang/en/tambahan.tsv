@@ -1,0 +1,78 @@
+# Teks tambahan (audit 12 Nov 2026): label huruf kapital, subjudul, pesan CurseForge, TextureView, impor layout, judul berbagi log, deskripsi aksesibilitas.
+SELESAI	DONE
+SIMPAN	SAVE
+KEMBALI	BACK
+AKTIF	ACTIVE
+DIPILIH	SELECTED
+MENGERTI	GOT IT
+Hapus akun	Delete account
+Populer	Popular
+Hijau	Green
+Ungu	Purple
+Gagal terhubung ke CurseForge	Could not connect to CurseForge
+Memuat data dari CurseForge...	Loading data from CurseForge...
+Gagal memuat dari CurseForge	Failed to load from CurseForge
+Permukaan game TextureView	TextureView game surface
+Nyalakan bila tampilan game terputar 90 derajat atau terlihat miring padahal launcher landscape (kasus yang dilaporkan di Minecraft 26.x dengan renderer Zink). Sedikit lebih berat dari bawaan. Berlaku saat game dibuka lagi.	Turn on if the game display is rotated 90 degrees or looks tilted even though the launcher is in landscape (a case reported on Minecraft 26.x with the Zink renderer). Slightly heavier than the default. Applies the next time the game is opened.
+{0} entri dilewati atau digabung karena tidak ada padanannya di Amber (misalnya laci, mouse virtual, layer tersembunyi, dan tombol scroll kedua).	{0} entries were skipped or merged because Amber has no equivalent for them (for example the drawer, virtual mouse, hidden layers, and the second scroll button).
+Semua tombol berhasil diubah. Periksa posisinya di editor kontrol.	All buttons were converted successfully. Check their positions in the control editor.
+Layout ini berasal dari {0} dan diubah ke format Amber. {~1}	This layout comes from {0} and was converted to the Amber format. {1}
+Log game AmberLauncher	AmberLauncher game log
+Bagikan log game	Share game log
+Log launcher AmberLauncher	AmberLauncher launcher log
+Bagikan log launcher	Share launcher log
+Batal dan keluar	Cancel and exit
+Ubah skin & jubah	Change skin & cape
+Hapus teks	Clear text
+# Preset kontrol dan preset bawaan (13 Nov 2026)
+Preset	Presets
+Preset kontrol	Control presets
+Simpan beberapa layout kontrol, lalu ganti kapan saja dengan satu ketukan. Layout yang sedang dipakai disimpan otomatis sebelum diganti.	Save several control layouts and switch between them anytime with one tap. The layout in use is saved automatically before it is replaced.
+Nama preset	Preset name
+Simpan layout saat ini	Save current layout
+Simpan nama	Save name
+Impor berkas	Import file
+Belum ada preset. Simpan layout saat ini, atau impor berkas dari Amber, Pojav, Zalith, atau Mojo.	No presets yet. Save the current layout, or import a file from Amber, Pojav, Zalith, or Mojo.
+Berisi {0} tombol	Contains {0} buttons
+Pakai	Use
+Ubah nama	Rename
+Yakin?	Sure?
+Kembalikan layout sebelumnya	Restore previous layout
+Pakai preset ini?	Use this preset?
+Layout tombol saat ini akan diganti dengan preset "{0}" ({1} tombol). Layout saat ini disimpan dulu supaya bisa dikembalikan.	The current button layout will be replaced with the preset "{0}" ({1} buttons). The current layout is saved first so you can restore it.
+Preset ini berisi {0} tombol makro yang mengetik chat atau perintah otomatis. Periksa dulu sebelum dipakai di server.	This preset contains {0} macro buttons that type chat messages or commands automatically. Check it before using it on a server.
+Preset ini memakai tombol panah. Atur tombol gerak di opsi Kontrol Minecraft ke tombol panah supaya karakter bergerak.	This preset uses the arrow keys. Set the movement keys in Minecraft's Controls options to the arrow keys so your character moves.
+Preset disimpan	Preset saved
+Preset dipakai	Preset applied
+Preset dihapus	Preset deleted
+Nama preset diubah	Preset renamed
+Gagal mengubah nama preset	Failed to rename the preset
+Layout sebelumnya dikembalikan	Previous layout restored
+Gagal menyimpan preset	Failed to save the preset
+Nama preset tidak boleh kosong	The preset name can't be empty
+Terlalu banyak preset. Hapus salah satu dulu (maksimal {0}).	Too many presets. Delete one first (maximum {0}).
+Preset tidak bisa dibaca	Couldn't read the preset
+Layout tidak bisa disimpan sebagai preset	This layout can't be saved as a preset
+Preset bawaan dipulihkan	Built-in presets restored
+Pulihkan preset bawaan	Restore built-in presets
+Standar (joystick)	Standard (joystick)
+WASD tanpa analog	WASD without joystick
+Panah tanpa analog	Arrow keys without joystick
+# Dialog preset kontrol: edit, duplikat, ekspor (13 Nov 2026)
+Opsi	Options
+Edit	Edit
+Duplikat	Duplicate
+Simpan layout ke sini	Save current layout here
+Dipakai	In use
+Sedang dipakai	Currently in use
+Simpan perubahan	Save changes
+Mengedit preset "{0}"	Editing preset "{0}"
+Setelah selesai mengedit, buka Preset lagi lalu pilih Simpan perubahan.	When you finish editing, open Presets again and choose Save changes.
+Preset diperbarui	Preset updated
+Gagal memperbarui preset	Failed to update the preset
+Preset diduplikat	Preset duplicated
+# Tampilan FPS dan RAM di game (14 Nov 2026)
+Tampilan di game	In-game display
+Tampilkan FPS dan RAM	Show FPS and RAM
+Angka FPS dan pemakaian RAM di sudut layar game. Ketuk angkanya di dalam game untuk membuka menu dan mematikannya.	FPS and RAM usage in the corner of the game screen. Tap the numbers in the game to open the menu and turn it off.
+Angka FPS dan pemakaian RAM di sudut layar game	FPS and RAM usage in the corner of the game screen

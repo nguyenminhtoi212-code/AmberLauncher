@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import com.israadev.nuxlauncher.ui.theme.AmberUi
+import com.israadev.nuxlauncher.ui.theme.LocalNuxScale
 import androidx.compose.animation.slideInVertically
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import com.israadev.nuxlauncher.ui.theme.rememberCameraSideInsets
@@ -52,6 +53,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -85,6 +87,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import com.israadev.nuxlauncher.ui.i18n.Text
+import com.israadev.nuxlauncher.ui.i18n.Tr
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -131,7 +134,9 @@ import com.israadev.nuxlauncher.core.download.MinecraftDownloader
 import com.israadev.nuxlauncher.core.horizon.HorizonEngine
 import com.israadev.nuxlauncher.core.instance.InstanceManager
 import com.israadev.nuxlauncher.core.launch.GameLauncher
+import com.israadev.nuxlauncher.core.modpack.ModpackStaging
 import com.israadev.nuxlauncher.core.mods.NuxAddonImportManager
+import com.israadev.nuxlauncher.core.mods.NuxModManager
 import com.israadev.nuxlauncher.core.models.Instance
 import com.israadev.nuxlauncher.core.models.UserAccount
 import com.israadev.nuxlauncher.core.renderer.NuxRendererInfo
@@ -143,6 +148,8 @@ import com.israadev.nuxlauncher.ui.components.AmbientSampler
 import com.israadev.nuxlauncher.ui.components.AmbientState
 import com.israadev.nuxlauncher.ui.components.HomeInfo
 import com.israadev.nuxlauncher.ui.components.HomeVideoLayer
+import com.israadev.nuxlauncher.ui.components.SnowBackLayer
+import com.israadev.nuxlauncher.ui.components.SnowFrontLayer
 import com.israadev.nuxlauncher.ui.components.NuxButton
 import com.israadev.nuxlauncher.ui.components.NuxDialog
 import com.israadev.nuxlauncher.ui.components.NUX_NAV_ITEMS
@@ -280,7 +287,12 @@ fun DashboardScreen() {
     // Pasang instance: siapkan Java, lalu unduh client, library, dan aset game. Dipakai tombol UNDUH
     // dan dipanggil otomatis begitu instance baru dibuat, supaya mod tidak lagi ditaruh sebelum
     // instance terpasang. Dialog unduhan memblokir layar sampai selesai atau dibatalkan.
-    fun installInstance(inst: Instance) {
+    //
+    // Instance dari modpack (layar Buat Instance): [packFile] adalah modpack yang baru dipilih. Berkasnya
+    // disimpan dulu di folder instance sebagai penanda "isi modpack belum terpasang"; setelah game dan loader
+    // terpasang, isinya dipasang, lalu penanda dihapus. Bila terputus atau dibatalkan, tombol UNDUH melanjutkan
+    // dari penanda itu dengan [packFile] kosong.
+    fun installInstance(inst: Instance, packFile: File? = null, packName: String = "") {
         if (isDownloading) return
         val targetRuntime = JavaRuntimeManager.getRecommendedRuntime(inst.mcVersion)
         isDownloading = true
@@ -290,6 +302,27 @@ fun DashboardScreen() {
 
         com.israadev.nuxlauncher.core.download.DownloadKeepAliveService.start(context)
         downloadJob = scope.launch {
+            if (packFile != null) {
+                dl.message = "Menyimpan modpack..."
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching { ModpackStaging.stage(InstanceManager.getInstanceDir(context, inst), packFile, packName) }
+                }
+                if (!isActive) return@launch
+                if (saved.isFailure) {
+                    // Tanpa penanda modpack-nya akan hilang diam-diam: batalkan instance ini seluruhnya
+                    InstanceManager.deleteInstance(context, inst.id)
+                    isDownloading = false
+                    downloadJob = null
+                    Toast.makeText(
+                        context,
+                        "Gagal menyimpan modpack: ${saved.exceptionOrNull()?.localizedMessage}. Instance dibatalkan.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
+                dl.message = "Menyiapkan OpenJDK (${JavaRuntimeManager.getRuntimeDisplayName(targetRuntime)})..."
+            }
+
             JavaRuntimeManager.extractRuntime(context, targetRuntime) { p, msg ->
                 dl.progress = p
                 dl.message = msg
@@ -303,12 +336,47 @@ fun DashboardScreen() {
             }
             if (!isActive) return@launch
 
+            // Game dan loader sudah terpasang; bila ada modpack yang menunggu, pasang isinya sekarang
+            val instDir = InstanceManager.getInstanceDir(context, inst)
+            val waiting = if (res.isSuccess) ModpackStaging.pending(instDir) else null
+            val packRes = if (waiting != null) {
+                dl.progress = 0f
+                dl.message = "Memasang modpack..."
+                NuxModManager.installStagedModpack(context, inst, waiting) { text, cur, total ->
+                    dl.message = text
+                    if (total > 0) dl.progress = (cur.toFloat() / total).coerceIn(0f, 1f)
+                }
+            } else {
+                null
+            }
+            if (!isActive) return@launch
+
+            val packReport = packRes?.getOrNull()
+            // Penanda dihapus hanya bila semuanya terpasang; kalau tidak, UNDUH mengulang dan melengkapi
+            if (packReport != null && packReport.failed == 0) ModpackStaging.clear(instDir)
+
             isDownloading = false
             downloadJob = null
-            if (res.isSuccess) {
-                Toast.makeText(context, "Instalasi selesai! Tekan PLAY untuk bermain.", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Gagal mengunduh: ${res.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+            when {
+                !res.isSuccess -> Toast.makeText(
+                    context, "Gagal mengunduh: ${res.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG
+                ).show()
+                packRes == null -> Toast.makeText(
+                    context, "Instalasi selesai! Tekan PLAY untuk bermain.", Toast.LENGTH_SHORT
+                ).show()
+                packRes.isFailure -> Toast.makeText(
+                    context,
+                    "Game terpasang, tapi modpack gagal: ${packRes.exceptionOrNull()?.localizedMessage}. Tekan UNDUH untuk mencoba lagi.",
+                    Toast.LENGTH_LONG
+                ).show()
+                packReport != null && packReport.failed > 0 -> Toast.makeText(
+                    context,
+                    "${packReport.failed} berkas modpack gagal diunduh. Periksa koneksi lalu tekan UNDUH untuk melengkapi.",
+                    Toast.LENGTH_LONG
+                ).show()
+                else -> Toast.makeText(
+                    context, "Instalasi selesai! Modpack terpasang. Tekan PLAY untuk bermain.", Toast.LENGTH_LONG
+                ).show()
             }
         }.also { job ->
             // Selesai, gagal, atau dibatalkan: penjaga proses tidak diperlukan lagi
@@ -442,6 +510,14 @@ fun DashboardScreen() {
                 )
             }
 
+            // Salju di belakang semua UI: lebat di Home, sedikit dan redup di layar lain (seperti di dalam ruangan).
+            if (launcherSettings.snowEnabled) {
+                SnowBackLayer(
+                    amount = launcherSettings.snowAmount,
+                    indoor = currentTab != "home"
+                )
+            }
+
             CompositionLocalProvider(LocalGlassBackdrop provides (if (liquid) blurBackdrop else null)) {
             when (currentTab) {
                 // Home: layar penuh tanpa sidebar dan kartu; navigasinya ada di bar bawah.
@@ -520,6 +596,16 @@ fun DashboardScreen() {
                                         installInstance(newInst)
                                     }
                                 },
+                                onModpackImport = { newInst, packFile, archiveName ->
+                                    InstanceManager.createInstance(context, newInst)
+                                    currentTab = "home"
+                                    Toast.makeText(
+                                        context,
+                                        "Instance ${newInst.name} dibuat. Mengunduh game dan modpack...",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    installInstance(newInst, packFile, archiveName)
+                                },
                                 modifier = Modifier.fillMaxSize()
                             )
                             "accounts" -> AccountsScreen(
@@ -540,6 +626,14 @@ fun DashboardScreen() {
                     }
                 }
             }
+            }
+
+            // Beberapa butir salju di atas UI supaya suasana Natalnya terasa (tidak menghalangi sentuhan).
+            if (launcherSettings.snowEnabled) {
+                SnowFrontLayer(
+                    amount = launcherSettings.snowAmount,
+                    indoor = currentTab != "home"
+                )
             }
         }
 
@@ -712,8 +806,13 @@ private fun HomeScene(
 ) {
     val freeRamMb = rememberFreeRamMb()
     val config = LocalConfiguration.current
-    val compact = config.screenWidthDp < 640
-    val nameSize = if (config.screenHeightDp < 380) 40.sp else 54.sp
+    // Ambang dihitung dari ukuran rancangan (ukuran layar dibagi skala UI), bukan dp mentah. Skala UI sudah menyamakan
+    // tinggi rancangan di semua HP, jadi judul dan tata letak punya proporsi yang sama di HP 360 dp maupun 392 dp.
+    val uiScale = LocalNuxScale.current.scaleFactor
+    val designWidthDp = config.screenWidthDp / uiScale
+    val designHeightDp = config.screenHeightDp / uiScale
+    val compact = designWidthDp < 760f
+    val nameSize = if (designHeightDp < 372f) 40.sp else 48.sp
     val textShadow = remember { Shadow(NuxColors.Ink.copy(alpha = 0.40f), Offset(0f, 2f), 12f) }
 
     // Menu akun cepat di bawah pil pemain: ganti, hapus, dan tambah akun tanpa membuka tab Akun
@@ -808,7 +907,7 @@ private fun HomeScene(
                     Spacer(modifier = Modifier.width(6.dp))
                     Icon(
                         imageVector = if (accountMenuOpen) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Ganti akun",
+                        contentDescription = Tr.t("Ganti akun"),
                         tint = AmberUi.Text.copy(alpha = 0.8f),
                         modifier = Modifier.size(18.dp)
                     )
@@ -827,7 +926,7 @@ private fun HomeScene(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Info,
-                        contentDescription = "Tentang & Lisensi",
+                        contentDescription = Tr.t("Tentang & Lisensi"),
                         tint = AmberUi.Text,
                         modifier = Modifier.size(22.dp)
                     )
@@ -986,37 +1085,43 @@ private fun HomeScene(
                     )
                 }
 
-                // Bar navigasi + tombol utama
-                Row(
+                // Bar navigasi + tombol utama. Ukuran keduanya tetap: bar pil pendek di kiri, tombol utama di kanan, dan
+                // ruang kosong di antaranya (bukan bar yang melebar mengisi sisa ruang). Hanya bila ruangnya benar-benar
+                // kurang, keduanya mengecil bersama dengan perbandingan yang sama, paling kecil 70%.
+                BoxWithConstraints(
                     modifier = Modifier
                         .padding(top = 16.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxWidth()
                 ) {
-                    Box(modifier = Modifier.weight(1f)) {
+                    val ideal = (HOME_NAV_ITEM_DP * 4 + HOME_NAV_CHROME_DP + HOME_MAIN_BUTTON_DP).toFloat()
+                    val fit = ((maxWidth.value - HOME_MIN_GAP_DP) / ideal).coerceIn(0.7f, 1f)
+                    val navItemWidth = (HOME_NAV_ITEM_DP * fit).dp
+                    val mainWidth = (HOME_MAIN_BUTTON_DP * fit).dp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         HomeNavBar(
                             selected = "home",
                             onSelect = onNavigate,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .widthIn(max = 430.dp)
+                            itemWidth = navItemWidth
                         )
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    if (instance != null) {
-                        HomeMainButton(
-                            text = if (isReady) "PLAY" else "UNDUH",
-                            icon = if (isReady) Icons.Default.PlayArrow else Icons.Default.Download,
-                            onClick = onPlay,
-                            modifier = Modifier.width(if (compact) 160.dp else 224.dp)
-                        )
-                    } else {
-                        HomeMainButton(
-                            text = "TAMBAH",
-                            icon = Icons.Default.Add,
-                            onClick = onCreateInstance,
-                            modifier = Modifier.width(if (compact) 160.dp else 224.dp)
-                        )
+                        if (instance != null) {
+                            HomeMainButton(
+                                text = if (isReady) "PLAY" else "UNDUH",
+                                icon = if (isReady) Icons.Default.PlayArrow else Icons.Default.Download,
+                                onClick = onPlay,
+                                modifier = Modifier.width(mainWidth)
+                            )
+                        } else {
+                            HomeMainButton(
+                                text = "TAMBAH",
+                                icon = Icons.Default.Add,
+                                onClick = onCreateInstance,
+                                modifier = Modifier.width(mainWidth)
+                            )
+                        }
                     }
                 }
             }
@@ -1113,11 +1218,21 @@ private val HOME_NAV_ITEMS = listOf(
     Triple("settings", "Pengaturan", Icons.Outlined.Tune)
 )
 
-/** Bar navigasi berbentuk pil di kiri bawah: Home, Mod, Akun, Pengaturan (ikon di atas label). */
+// Ukuran tetap baris bawah Home (dp pada skala UI). Bar = 4 item + jarak dan isi pil; tombol utama di kanannya.
+private const val HOME_NAV_ITEM_DP = 100
+private const val HOME_NAV_CHROME_DP = 16
+private const val HOME_MAIN_BUTTON_DP = 216
+private const val HOME_MIN_GAP_DP = 16f
+
+/**
+ * Bar navigasi berbentuk pil di kiri bawah: Home, Mod, Akun, Pengaturan (ikon di atas label). Lebarnya mengikuti isi
+ * ([itemWidth] per item), tidak melebar mengikuti ruang yang ada.
+ */
 @Composable
 private fun HomeNavBar(
     selected: String,
     onSelect: (String) -> Unit,
+    itemWidth: Dp,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1132,7 +1247,7 @@ private fun HomeNavBar(
             val isSelected = id == selected
             Column(
                 modifier = Modifier
-                    .weight(1f)
+                    .width(itemWidth)
                     .fillMaxHeight()
                     .clip(CircleShape)
                     .background(if (isSelected) AmberUi.SurfaceRaised else Color.Transparent, CircleShape)

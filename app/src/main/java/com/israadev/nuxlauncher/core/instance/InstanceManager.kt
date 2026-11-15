@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.israadev.nuxlauncher.core.crash.LauncherLog
+import com.israadev.nuxlauncher.core.modpack.ModpackStaging
 import com.israadev.nuxlauncher.core.models.Instance
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -312,7 +313,7 @@ object InstanceManager {
         migrateOldStorage(context)
 
         val file = getInstancesFile(context)
-        var loadedList = mutableListOf<Instance>()
+        val loadedList = mutableListOf<Instance>()
         if (file.exists()) {
             try {
                 val json = file.readText()
@@ -328,22 +329,27 @@ object InstanceManager {
 
         // Scan instances directory for isolated instance.json (like Windows version)
         val instancesDir = getInstancesDir(context)
+        val knownIds = loadedList.mapTo(HashSet()) { it.id }
+        val folderInstances = mutableListOf<Pair<String, Instance>>()
         instancesDir.listFiles()?.forEach { instFolder ->
             if (instFolder.isDirectory) {
                 val configFile = File(instFolder, "instance.json")
-                if (configFile.exists() && loadedList.none { it.id == instFolder.name }) {
+                if (configFile.exists() && instFolder.name !in knownIds) {
                     try {
                         val inst = gson.fromJson(configFile.readText(), Instance::class.java)
                         if (inst != null) {
-                            loadedList.add(inst)
+                            folderInstances.add(instFolder.name to inst)
                         }
                     } catch (_: Exception) {}
                 }
             }
         }
 
+        // Id tidak boleh ganda (lihat mergeInstances): dua id sama membuat layar pemilih instance crash
+        val mergedList = mergeInstances(loadedList, folderInstances)
+
         // Check if downloaded client JAR and loader exist for each instance
-        val verifiedList = loadedList.map { inst ->
+        val verifiedList = mergedList.map { inst ->
             inst.copy(isDownloaded = isInstanceDownloaded(context, inst))
         }
 
@@ -365,6 +371,8 @@ object InstanceManager {
     fun isInstanceDownloaded(context: Context, inst: Instance): Boolean {
         // Mesin Rust tidak memakai client.jar maupun library Java: tidak ada yang perlu diunduh launcher
         if (com.israadev.nuxlauncher.core.horizon.HorizonEngine.isEngine(inst.loader)) return true
+        // Instance dari modpack yang isinya belum selesai dipasang belum siap main: UNDUH melanjutkannya
+        if (ModpackStaging.hasPending(getInstanceDir(context, inst))) return false
         val versionsDir = getVersionsDir(context)
         val vDir = File(versionsDir, inst.mcVersion)
         val jarFile = File(vDir, "${inst.mcVersion}.jar")
@@ -413,6 +421,8 @@ object InstanceManager {
         }
 
         val list = _instances.value.toMutableList()
+        // Id yang sama tidak boleh masuk dua kali (mis. init() sempat menemukan foldernya lebih dulu)
+        list.removeAll { it.id == instance.id }
         list.add(0, instance)
         _instances.value = list
         _selectedInstance.value = instance

@@ -4,6 +4,7 @@ import android.content.Context
 import com.israadev.nuxlauncher.core.crash.CrashManager
 import com.israadev.nuxlauncher.core.crash.GameLogArchive
 import com.israadev.nuxlauncher.core.renderer.NuxRendererRegistry
+import com.israadev.nuxlauncher.discord.DiscordPresence
 import com.israadev.nuxlauncher.ui.activities.ErrorActivity
 import com.israadev.nuxlauncher.ui.components.GameLoadingOverlay
 import com.israadev.nuxlauncher.ui.dialogs.ExitConfirmDialog
@@ -369,6 +370,8 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun terminateGameProcess() {
         archiveGameLogOnce()
+        // Hapus presence Discord dulu (menunggu paling lama 0,8 detik); proses ini dimatikan paksa di bawah.
+        try { DiscordPresence.stopBlocking() } catch (_: Throwable) {}
         // Selesaikan berkas rekaman dulu; proses ini dimatikan paksa di bawah.
         try { ScreenRecorder.stopBlocking() } catch (_: Throwable) {}
         try {
@@ -386,6 +389,8 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback {
         super.onDestroy()
         MouseDiag.sink = null
         archiveGameLogOnce()
+        // Hapus presence Discord dulu (menunggu paling lama 0,8 detik); proses ini dimatikan paksa di bawah.
+        try { DiscordPresence.stopBlocking() } catch (_: Throwable) {}
         // Selesaikan berkas rekaman dulu; proses ini dimatikan paksa di bawah.
         try { ScreenRecorder.stopBlocking() } catch (_: Throwable) {}
         try {
@@ -581,6 +586,13 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback {
         extraJvmArgs = intent.getStringArrayListExtra(EXTRA_EXTRA_JVM_ARGS) ?: emptyList()
         extraGameArgs = intent.getStringArrayListExtra(EXTRA_EXTRA_GAME_ARGS) ?: emptyList()
         useTextureView = shouldUseTextureView()
+
+        // Discord Rich Presence (opsional): hanya pada build yang membawa SDK dan bila pemain menyalakannya.
+        // Tanpa aplikasi Discord di HP ini, attach() langsung menyerah dan tidak ada yang berjalan.
+        if (BuildConfig.HAS_DISCORD_SDK && SettingsManager.settings.value.discordRpcEnabled) {
+            DiscordPresence.attach(this)
+            DiscordPresence.update(DiscordPresence.gamePresence(mcVersion, loader, System.currentTimeMillis()))
+        }
 
         // Setup real-time native LoggerBridge
         setupLogger()
@@ -1824,52 +1836,28 @@ private fun KeyEvent.isDpadArrow(): Boolean = when (keyCode) {
 }
 
 /**
- * Info kondisi HP yang ditampilkan di samping angka FPS supaya penyebab FPS rendah terbaca
- * langsung di layar: "sisa RAM xxxMB" (memori kosong HP; kalau tinggal sedikit sistem mulai
- * menukar memori / menutup aplikasi) dan "PANAS" (prosesor diperlambat karena HP panas).
- * Pasangan hasil: (teks, peringatan?). Teks kosong = info tidak tersedia.
+ * Teks RAM untuk tampilan FPS di layar: "RAM 2.1/3.6 GB" (memori HP yang terpakai dari total). Pasangan hasil:
+ * (teks, peringatan?). Peringatan = memori kosong HP tinggal sedikit, saat sistem mulai menukar memori atau menutup
+ * aplikasi (penyebab umum FPS jatuh di HP RAM kecil). Teks kosong = info tidak tersedia.
  */
-private fun buildPerfHint(context: Context): Pair<String, Boolean> {
-    var text = ""
-    var warn = false
-    try {
+private fun buildRamReadout(context: Context): Pair<String, Boolean> {
+    return try {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
-        if (am != null) {
+        if (am == null) {
+            Pair("", false)
+        } else {
             val mi = android.app.ActivityManager.MemoryInfo()
             am.getMemoryInfo(mi)
+            val gb = 1024.0 * 1024.0 * 1024.0
+            val totalGb = mi.totalMem / gb
+            val usedGb = (mi.totalMem - mi.availMem) / gb
             val availMb = (mi.availMem / (1024L * 1024L)).toInt()
-            // Dibulatkan per 50 MB supaya angka tidak berubah-ubah terus
-            text = "sisa RAM ${(availMb / 50) * 50}MB"
-            if (mi.lowMemory || availMb < 450) warn = true
+            val text = String.format(java.util.Locale.ROOT, "RAM %.1f/%.1f GB", usedGb, totalGb)
+            Pair(text, mi.lowMemory || availMb < 450)
         }
     } catch (_: Throwable) {
+        Pair("", false)
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        try {
-            val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-            if (pm != null && pm.currentThermalStatus >= android.os.PowerManager.THERMAL_STATUS_MODERATE) {
-                text = if (text.isEmpty()) "PANAS" else "$text · PANAS"
-                warn = true
-            }
-        } catch (_: Throwable) {
-        }
-    }
-    // Hz layar yang benar-benar aktif: hanya bila "Kunci layar 60 Hz" menyala (selain itu tidak ditampilkan).
-    // Dipakai untuk memastikan kunci berlaku; kalau tertulis 90Hz berarti sistem menolaknya.
-    try {
-        val hz = DeviceProfiles.refreshRateLabel(context, SettingsManager.settings.value.lockRefresh60)
-        if (hz.isNotEmpty()) {
-            text = if (text.isEmpty()) hz else "$text · $hz"
-        }
-    } catch (_: Throwable) {
-    }
-    return Pair(localizeHint(text), warn)
-}
-
-/** Menerjemahkan kata di teks kondisi HP bila bahasa bukan Indonesia (HUD digambar langsung, bukan lewat Text). */
-private fun localizeHint(text: String): String {
-    if (text.isEmpty() || Tr.effective == Tr.ID) return text
-    return text.replace("sisa RAM", Tr.t("sisa RAM")).replace("PANAS", Tr.t("PANAS"))
 }
 
 @Composable
@@ -1963,14 +1951,19 @@ fun GameScreen(
     LaunchedEffect(Unit) {
         var tick = 0
         while (isActive) {
-            try {
-                currentFps = CallbackBridge.getCurrentFps()
-            } catch (_: Throwable) {
+            // Tampilan FPS dan RAM dimatikan di Pengaturan atau menu: tidak ada yang membaca angkanya (kecuali menu atau
+            // panel log yang sedang terbuka), jadi pembacaan dan penggambarannya dilewati sama sekali.
+            val hudShown = SettingsManager.settings.value.showFpsHud && wantPerfHint
+            if (hudShown || showInGameSettingsDialog || isConsoleVisible) {
+                try {
+                    currentFps = CallbackBridge.getCurrentFps()
+                } catch (_: Throwable) {
+                }
             }
-            if (tick % 3 == 0 && wantPerfHint) {
-                // Panggilan ke sistem (memori, suhu) dikerjakan di luar thread utama.
+            if ((tick % 3 == 0 || perfText.isEmpty()) && hudShown) {
+                // Panggilan ke sistem (memori) dikerjakan di luar thread utama.
                 val hint = withContext(Dispatchers.Default) {
-                    try { buildPerfHint(context) } catch (_: Throwable) { Pair("", false) }
+                    try { buildRamReadout(context) } catch (_: Throwable) { Pair("", false) }
                 }
                 if (hint.first != perfText) perfText = hint.first
                 if (hint.second != perfWarn) perfWarn = hint.second
@@ -2257,6 +2250,7 @@ fun GameScreen(
                     fps = { currentFps },
                     perfText = { perfText },
                     perfWarn = { perfWarn },
+                    fpsHudEnabled = launcherSettings.showFpsHud,
                     onFpsClick = { showInGameSettingsDialog = true },
                     onToggleKeyboard = { isKeyboardRequested = !isKeyboardRequested },
                     onToggleControls = { isControlVisible = !isControlVisible },
@@ -2297,6 +2291,10 @@ fun GameScreen(
             onFpsModeChange = { newMode ->
                 fpsMode = newMode
             },
+            showFpsHud = launcherSettings.showFpsHud,
+            onShowFpsHudChange = { on ->
+                SettingsManager.updateSettings(context, launcherSettings.copy(showFpsHud = on))
+            },
             onOpenConsoleLog = {
                 fpsMode = FpsMode.SHOW_LOG
                 isConsoleVisible = true
@@ -2327,6 +2325,13 @@ fun GameScreen(
                 SettingsManager.updateSettings(
                     context,
                     launcherSettings.copy(buttonLookDrag = on)
+                )
+            },
+            buttonSlide = launcherSettings.buttonSlide,
+            onButtonSlideChange = { on ->
+                SettingsManager.updateSettings(
+                    context,
+                    launcherSettings.copy(buttonSlide = on)
                 )
             },
             isControlVisible = isControlVisible,

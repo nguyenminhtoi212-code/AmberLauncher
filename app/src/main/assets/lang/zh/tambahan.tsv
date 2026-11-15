@@ -1,0 +1,84 @@
+# Teks tambahan (audit 12 Nov 2026): label huruf kapital, subjudul, pesan CurseForge, TextureView, impor layout, judul berbagi log, deskripsi aksesibilitas.
+SELESAI	完成
+SIMPAN	保存
+KEMBALI	返回
+AKTIF	使用中
+DIPILIH	已选择
+MENGERTI	知道了
+Hapus akun	删除账号
+Populer	热门
+Hijau	绿色
+Ungu	紫色
+Navy	藏青色
+Teal	青色
+Gagal terhubung ke CurseForge	无法连接到 CurseForge
+Memuat data dari CurseForge...	正在从 CurseForge 加载数据…
+Gagal memuat dari CurseForge	从 CurseForge 加载失败
+Permukaan game TextureView	TextureView 游戏画面
+Nyalakan bila tampilan game terputar 90 derajat atau terlihat miring padahal launcher landscape (kasus yang dilaporkan di Minecraft 26.x dengan renderer Zink). Sedikit lebih berat dari bawaan. Berlaku saat game dibuka lagi.	如果游戏画面旋转了 90 度，或在启动器为横屏时画面仍然倾斜，请开启此项（在使用 Zink 渲染器的 Minecraft 26.x 上有此类反馈）。比默认方式稍重。下次打开游戏时生效。
+{0} entri dilewati atau digabung karena tidak ada padanannya di Amber (misalnya laci, mouse virtual, layer tersembunyi, dan tombol scroll kedua).	有 {0} 个条目被跳过或合并，因为 Amber 中没有对应的功能（例如抽屉、虚拟鼠标、隐藏图层和第二个滚动按键）。
+Semua tombol berhasil diubah. Periksa posisinya di editor kontrol.	所有按键都已成功转换。请在控制编辑器中检查它们的位置。
+Layout ini berasal dari {0} dan diubah ke format Amber. {~1}	此布局来自 {0}，已转换为 Amber 格式。{1}
+Log game AmberLauncher	AmberLauncher 游戏日志
+Bagikan log game	分享游戏日志
+Log launcher AmberLauncher	AmberLauncher 启动器日志
+Bagikan log launcher	分享启动器日志
+Batal dan keluar	取消并退出
+Ubah skin & jubah	更换皮肤和披风
+Hapus teks	清除文字
+Efek	特效
+Efek salju	雪花特效
+Jumlah salju	雪花数量
+Salju turun di Beranda dan layar lain. Bawaan mati.	主页和其他界面会飘落雪花。默认关闭。
+# Preset kontrol dan preset bawaan (13 Nov 2026)
+Preset	预设
+Preset kontrol	控制预设
+Simpan beberapa layout kontrol, lalu ganti kapan saja dengan satu ketukan. Layout yang sedang dipakai disimpan otomatis sebelum diganti.	可以保存多套控制布局，并随时一键切换。替换之前，当前使用的布局会自动保存。
+Nama preset	预设名称
+Simpan layout saat ini	保存当前布局
+Simpan nama	保存名称
+Impor berkas	导入文件
+Belum ada preset. Simpan layout saat ini, atau impor berkas dari Amber, Pojav, Zalith, atau Mojo.	还没有预设。请保存当前布局，或导入来自 Amber、Pojav、Zalith 或 Mojo 的文件。
+Berisi {0} tombol	包含 {0} 个按钮
+Pakai	使用
+Ubah nama	重命名
+Yakin?	确定吗？
+Kembalikan layout sebelumnya	恢复之前的布局
+Pakai preset ini?	使用此预设？
+Layout tombol saat ini akan diganti dengan preset "{0}" ({1} tombol). Layout saat ini disimpan dulu supaya bisa dikembalikan.	当前的按钮布局将被预设“{0}”（{1} 个按钮）替换。会先保存当前布局，以便恢复。
+Preset ini berisi {0} tombol makro yang mengetik chat atau perintah otomatis. Periksa dulu sebelum dipakai di server.	此预设包含 {0} 个会自动发送聊天消息或命令的宏按钮。在服务器上使用前请先检查。
+Preset ini memakai tombol panah. Atur tombol gerak di opsi Kontrol Minecraft ke tombol panah supaya karakter bergerak.	此预设使用方向键。请在 Minecraft 的控制选项中把移动按键设为方向键，角色才能移动。
+Preset disimpan	预设已保存
+Preset dipakai	已应用预设
+Preset dihapus	预设已删除
+Nama preset diubah	预设已重命名
+Gagal mengubah nama preset	重命名预设失败
+Layout sebelumnya dikembalikan	已恢复之前的布局
+Gagal menyimpan preset	保存预设失败
+Nama preset tidak boleh kosong	预设名称不能为空
+Terlalu banyak preset. Hapus salah satu dulu (maksimal {0}).	预设太多了。请先删除一个（最多 {0} 个）。
+Preset tidak bisa dibaca	无法读取预设
+Layout tidak bisa disimpan sebagai preset	此布局无法保存为预设
+Preset bawaan dipulihkan	已恢复内置预设
+Pulihkan preset bawaan	恢复内置预设
+Standar (joystick)	标准（摇杆）
+WASD tanpa analog	WASD（无摇杆）
+Panah tanpa analog	方向键（无摇杆）
+# Dialog preset kontrol: edit, duplikat, ekspor (13 Nov 2026)
+Opsi	选项
+Edit	编辑
+Duplikat	复制
+Simpan layout ke sini	将当前布局保存到此预设
+Dipakai	使用中
+Sedang dipakai	当前使用中
+Simpan perubahan	保存更改
+Mengedit preset "{0}"	正在编辑预设“{0}”
+Setelah selesai mengedit, buka Preset lagi lalu pilih Simpan perubahan.	编辑完成后，请再次打开预设并选择“保存更改”。
+Preset diperbarui	预设已更新
+Gagal memperbarui preset	更新预设失败
+Preset diduplikat	预设已复制
+# Tampilan FPS dan RAM di game (14 Nov 2026)
+Tampilan di game	游戏内显示
+Tampilkan FPS dan RAM	显示 FPS 和内存
+Angka FPS dan pemakaian RAM di sudut layar game. Ketuk angkanya di dalam game untuk membuka menu dan mematikannya.	在游戏画面角落显示 FPS 和内存占用。在游戏中点按数字即可打开菜单并关闭。
+Angka FPS dan pemakaian RAM di sudut layar game	在游戏画面角落显示 FPS 和内存占用

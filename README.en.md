@@ -24,7 +24,7 @@ AmberLauncher is a launcher for playing Minecraft Java Edition on Android. The f
 - **Automatic starting values**: game RAM, resolution scale, and render distance follow the device's RAM, and all of them can be changed.
 - **Mods and content**: Vanilla, Fabric, Forge, and NeoForge, with mods from Modrinth and CurseForge.
 
-It uses a translucent dark theme with an amber accent. It is still in beta; bug reports and feedback are welcome.
+It uses a translucent dark theme with an amber accent. Bug reports and feedback are welcome.
 
 ## Download
 
@@ -51,12 +51,13 @@ Later updates can be installed from inside the launcher (**Settings > Updates**)
 
 **Game**
 - **Many separate instances**, each with its own version, mods, and settings.
-- **Vanilla, Fabric, Forge (1.13+), and NeoForge (1.20.2+)**. Mod and modpack search automatically matches the instance's loader.
+- **Vanilla, Fabric (including Legacy Fabric for Minecraft 1.7.10 to 1.13.2), Forge (1.7.10+), and NeoForge (1.20.2+)**. Mod and modpack search automatically matches the instance's loader. Forge 1.12.2 and older and Legacy Fabric are still being tested.
 - **Bundled Java**: Java 8, 17, 21, and 25, with nothing else to install.
 - **Renderer choices**: Auto (suggested), Krypton, MobileGlues, GL4ES, Kopper Zink, and Freedreno (Snapdragon Turnip).
 
 **Mods and content**
 - **Modrinth and CurseForge** right inside the app: mods, modpacks, resource packs, shaders, and datapacks, including their dependencies. Manual file installation works too.
+- **Create an instance straight from a modpack**: on the Create Instance screen pick Modpack, then choose a `.mrpack` (Modrinth) or `.zip` (CurseForge) file. The game, loader, and all mods are installed in one go, with no need to create an empty instance first. Quilt modpacks are not supported yet.
 
 **Controls**
 - **Touch control editor**: adjust the position, size, and buttons on screen however you like.
@@ -69,10 +70,10 @@ Later updates can be installed from inside the launcher (**Settings > Updates**)
 - **Built-in screen recording**: choose *Game only* or *With buttons*. It uses the hardware encoder (720p/30 fps by default) and saves to the Gallery (Movies/AmberLauncher). Game audio is not recorded yet.
 - **Crash reports** with optional log upload to mclo.gs.
 - **In-app updates**, with the 32-bit/64-bit APK chosen automatically. Only numbered releases are offered; per-patch test builds and documentation changes never prompt an update.
-- **Multilingual interface**: Bahasa Indonesia, English, Español, Tiếng Việt, Português (Brasil), and ภาษาไทย.
+- **Multilingual interface**: Bahasa Indonesia, English, Español, Tiếng Việt, Português (Brasil), ภาษาไทย, 简体中文, and Filipino.
 - **Experimental**: TouchController mod support and the Rust engine (Horizon).
 
-**Not supported yet:** Forge for Minecraft 1.12.2 and older, NeoForge for 1.20.1 and older, and Quilt.
+**Not supported yet:** Forge for Minecraft 1.6.4 and older, NeoForge for 1.20.1 and older, and Quilt.
 
 ## Help
 

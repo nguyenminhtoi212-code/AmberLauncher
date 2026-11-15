@@ -24,7 +24,7 @@ AmberLauncher adalah launcher untuk memainkan Minecraft Java Edition di Android.
 - **Setelan awal otomatis**: RAM game, skala resolusi, dan jarak pandang menyesuaikan RAM perangkat, dan semuanya bisa diubah.
 - **Mod dan konten**: Vanilla, Fabric, Forge, dan NeoForge, dengan mod dari Modrinth dan CurseForge.
 
-Tampilannya gelap transparan dengan aksen kuning amber. Masih tahap beta; laporan bug dan masukan dipersilakan.
+Tampilannya gelap transparan dengan aksen kuning amber. Laporan bug dan masukan dipersilakan.
 
 ## Unduh
 
@@ -51,12 +51,13 @@ Pembaruan berikutnya bisa dipasang langsung dari dalam launcher (**Pengaturan > 
 
 **Game**
 - **Banyak instance terpisah**, masing-masing dengan versi, mod, dan pengaturan sendiri.
-- **Vanilla, Fabric, Forge (1.13+), dan NeoForge (1.20.2+)**. Pencarian mod dan modpack otomatis disesuaikan dengan loader instance.
+- **Vanilla, Fabric (termasuk Legacy Fabric untuk Minecraft 1.7.10 sampai 1.13.2), Forge (1.7.10+), dan NeoForge (1.20.2+)**. Pencarian mod dan modpack otomatis disesuaikan dengan loader instance. Forge 1.12.2 ke bawah dan Legacy Fabric masih tahap uji.
 - **Java bawaan**: Java 8, 17, 21, dan 25, tanpa perlu memasang apa pun.
 - **Pilihan renderer**: Auto (disarankan), Krypton, MobileGlues, GL4ES, Kopper Zink, dan Freedreno (Snapdragon Turnip).
 
 **Mod dan konten**
 - **Modrinth dan CurseForge** langsung dari aplikasi: mod, modpack, resource pack, shader, dan datapack, lengkap dengan dependensinya. Pemasangan file manual juga bisa.
+- **Buat instance langsung dari modpack**: di layar Buat Instance pilih Modpack, lalu pilih file `.mrpack` (Modrinth) atau `.zip` (CurseForge). Game, loader, dan semua mod terpasang sekaligus, tanpa perlu membuat instance kosong dulu. Modpack Quilt belum didukung.
 
 **Kontrol**
 - **Editor kontrol sentuh**: atur posisi, ukuran, dan tombol layar sesukamu.
@@ -69,10 +70,10 @@ Pembaruan berikutnya bisa dipasang langsung dari dalam launcher (**Pengaturan > 
 - **Rekam layar bawaan**: pilih *Game saja* atau *Dengan tombol*. Memakai encoder perangkat keras (bawaannya 720p/30 fps), hasilnya ada di Galeri (Movies/AmberLauncher). Suara game belum ikut terekam.
 - **Laporan crash** dengan opsi unggah log ke mclo.gs.
 - **Pembaruan dari dalam aplikasi**, dengan APK 32-bit/64-bit dipilih otomatis. Yang ditawarkan hanya rilis bernomor; build uji tiap patch dan perubahan dokumen tidak memunculkan pembaruan.
-- **Antarmuka multibahasa**: Indonesia, English, Español, Tiếng Việt, Português (Brasil), dan ภาษาไทย.
+- **Antarmuka multibahasa**: Indonesia, English, Español, Tiếng Việt, Português (Brasil), ภาษาไทย, 简体中文, dan Filipino.
 - **Eksperimental**: dukungan mod TouchController dan mesin Rust (Horizon).
 
-**Belum didukung:** Forge untuk Minecraft 1.12.2 ke bawah, NeoForge untuk 1.20.1 ke bawah, dan Quilt.
+**Belum didukung:** Forge untuk Minecraft 1.6.4 ke bawah, NeoForge untuk 1.20.1 ke bawah, dan Quilt.
 
 ## Bantuan
 

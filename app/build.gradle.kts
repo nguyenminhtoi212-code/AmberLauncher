@@ -10,12 +10,13 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Dasar nama versi dari berkas VERSION di akar repo. Ubah isinya (mis. 0.2.0-beta atau 1.0.0) untuk
-// naik ke seri versi berikutnya; nomor build di belakangnya otomatis mulai dari 1 lagi.
+// Dasar nama versi dari berkas VERSION di akar repo: tiga angka, mis. 1.0.0. Rilis pertama memakai isinya;
+// rilis berikutnya dinaikkan otomatis oleh workflow (patch/minor/major), jadi berkas ini hanya diubah
+// bila ingin melompat ke versi tertentu.
 fun baseVersionName(): String =
     rootProject.file("VERSION").takeIf { it.isFile }
         ?.readText()?.trim()?.takeIf { it.isNotEmpty() }
-        ?: "0.1.0-beta"
+        ?: "1.0.0"
 
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
@@ -54,6 +55,12 @@ if (isOfficialRepoBuild && !hasReleaseKey) {
 // sebelumnya: hanya arm64-v8a, tanpa build native.
 val buildArm32 = System.getenv("AMBER_ABI") == "arm32"
 
+// Discord Rich Presence (opsional). SDK resmi Discord berlisensi dan TIDAK boleh ada di repo publik. Workflow
+// mengunduhnya ke app/libs/discord_partner_sdk.aar dari repo privat (lihat docs/discord-rpc.md). Fitur ini hanya
+// ikut terbangun bila berkas itu ada; tanpanya app terbangun seperti biasa. AMBER_DISCORD=0 mematikannya paksa
+// (dipakai workflow untuk membangun ulang tanpa SDK bila build dengan SDK gagal).
+val hasDiscordSdk = file("libs/discord_partner_sdk.aar").exists() && System.getenv("AMBER_DISCORD") != "0"
+
 android {
     namespace = "com.israadev.nuxlauncher"
     compileSdk = 37
@@ -66,11 +73,11 @@ android {
         // Actions lewat nomor run, jadi JANGAN direset walau nama versi dimulai ulang: Android menolak
         // memasang APK dengan versionCode lebih kecil dari yang sudah terpasang. Build lokal tetap 10.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 100 + it } ?: 10
-        // Nama versi yang dilihat pengguna: dasarnya dari berkas VERSION di akar repo (mis. 0.1.0-beta).
-        // GitHub Actions menambahkan nomor build di belakangnya lewat AMBER_VERSION_NAME (0.1.0-beta.7);
-        // build lokal diberi akhiran ".dev" supaya tidak pernah dianggap pembaruan.
+        // Nama versi yang dilihat pengguna. GitHub Actions menentukannya lewat AMBER_VERSION_NAME (mis. 1.0.1
+        // untuk rilis, 1.0.1-uji.130 untuk build uji). Build lokal memakai isi berkas VERSION dengan akhiran
+        // "+dev" (mis. 1.0.0+dev): sama dengan versi dasarnya, jadi hanya rilis yang lebih baru yang ditawarkan.
         versionName = System.getenv("AMBER_VERSION_NAME")?.trim()?.takeIf { it.isNotEmpty() }
-            ?: "${baseVersionName()}.dev"
+            ?: "${baseVersionName()}+dev"
 
 
         // Kunci API CurseForge untuk unduhan di layar Mod. Tidak disimpan di repo: diambil dari variabel
@@ -79,6 +86,8 @@ android {
         val curseForgeApiKey = (System.getenv("CURSEFORGE_API_KEY") ?: localProperties.getProperty("curseforge.api.key") ?: "")
             .filter { !it.isWhitespace() && it != '"' && it != '\\' }
         buildConfigField("String", "CURSEFORGE_API_KEY", "\"" + curseForgeApiKey + "\"")
+        // true bila SDK Discord ikut terbangun; layar Pengaturan dan GameActivity memeriksanya.
+        buildConfigField("boolean", "HAS_DISCORD_SDK", hasDiscordSdk.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -98,6 +107,17 @@ android {
         externalNativeBuild {
             ndkBuild {
                 path = file("src/main/jni/Android.mk")
+            }
+        }
+    }
+
+    if (!buildArm32 && hasDiscordSdk) {
+        // Build 64-bit tidak punya build native lain; CMake ini hanya untuk jembatan Discord. NDK 27 sama dengan
+        // yang dipakai pembuat SDK (header SDK memakai C++20). Build 32-bit memakai ndk-build (lihat build-arm32.sh).
+        ndkVersion = "27.2.12479018"
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
             }
         }
     }
@@ -141,8 +161,9 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-        // Dibutuhkan Android.mk untuk menautkan bytehook; hanya aktif di build 32-bit.
-        prefab = buildArm32
+        // Dibutuhkan Android.mk untuk menautkan bytehook (build 32-bit) dan oleh jembatan Discord (header dan
+        // library SDK datang sebagai paket prefab dari AAR-nya).
+        prefab = buildArm32 || hasDiscordSdk
     }
 
     packaging {
@@ -287,6 +308,8 @@ dependencies {
     implementation(libs.commons.compress)
     implementation(libs.xz)
     implementation(libs.bytehook)
+    // SDK Discord (opsional, hanya ada di build dengan SDK_TOKEN). Membawa kelas Java, library native, dan paket prefab.
+    if (hasDiscordSdk) implementation(files("libs/discord_partner_sdk.aar"))
     // Klien proxy resmi mod TouchController (LGPL-3.0). Dipanggil lewat refleksi, lihat TouchControllerBridge.
     implementation(libs.proxy.client.android)
     implementation("androidx.webkit:webkit:1.12.1")

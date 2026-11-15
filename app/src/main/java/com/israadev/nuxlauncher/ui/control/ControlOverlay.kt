@@ -27,13 +27,21 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import com.israadev.nuxlauncher.FpsMode
 import com.israadev.nuxlauncher.core.controls.models.ControlShowMode
 import com.israadev.nuxlauncher.core.controls.models.CustomControlButton
 import com.israadev.nuxlauncher.core.controls.JoystickLogic
+import com.israadev.nuxlauncher.core.controls.MacroIO
+import com.israadev.nuxlauncher.core.controls.MacroRegistry
+import com.israadev.nuxlauncher.core.controls.MacroRunner
+import com.israadev.nuxlauncher.core.controls.MacroScript
+import com.israadev.nuxlauncher.core.controls.models.MacroRunMode
 import com.israadev.nuxlauncher.core.settings.SettingsManager
 import com.movtery.inputmap.keycodes.LwjglGlfwKeycode
 import com.movtery.zalithlauncher.bridge.CURSOR_DISABLED
@@ -82,11 +90,29 @@ fun GameControlsLayer(
     onToggleControls: () -> Unit,
     onOpenMenu: () -> Unit,
     // Game sedang menampilkan kursor (menu/GUI). Dibaca dari status kursor game, bukan dari layar.
-    inMenu: Boolean = false
+    inMenu: Boolean = false,
+    // Tampilan FPS dan RAM dimatikan pemain (Pengaturan atau menu dalam game).
+    fpsHudEnabled: Boolean = true
 ) {
     val density = LocalDensity.current
-    buttons.forEach { btn ->
-        key(btn.id) {
+    // Lapisan tombol hilang (game ditutup): hentikan semua makro supaya tidak ada yang jalan sendiri.
+    DisposableEffect(Unit) {
+        onDispose { MacroRegistry.stopAll() }
+    }
+    buttons.forEach { source ->
+        key(source.id) {
+            // Tampilan FPS dan RAM lebih lebar dari tombol FPS lama; ukurannya diperlebar di sini saja,
+            // tata letak yang tersimpan tidak berubah.
+            val btn = remember(source) {
+                if (source.isSystem && source.systemAction == "FPS") {
+                    source.copy(
+                        widthDp = maxOf(source.widthDp, FPS_HUD_MIN_WIDTH_DP),
+                        heightDp = maxOf(source.heightDp, FPS_HUD_MIN_HEIGHT_DP)
+                    )
+                } else {
+                    source
+                }
+            }
             val widthPx = with(density) { btn.widthDp.dp.toPx() }
             val heightPx = with(density) { btn.heightDp.dp.toPx() }
             val left = (screenWidth * (btn.xPercent / 100f) - widthPx / 2f)
@@ -106,7 +132,7 @@ fun GameControlsLayer(
                             FpsMode.PINNED -> !consoleVisible
                             FpsMode.SHOW_LOG -> false
                         }
-                        if (show) {
+                        if (show && fpsHudEnabled) {
                             FpsText(btn, place, fpsMode == FpsMode.PINNED, fps, perfText, perfWarn, onFpsClick)
                         }
                     }
@@ -139,17 +165,42 @@ fun GameControlsLayer(
  */
 private val macroTypingScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+/** Menyalurkan langkah makro "Urutan Aksi" ke input game. */
+private object BridgeMacroIO : MacroIO {
+    override fun key(code: Int, down: Boolean) {
+        CallbackBridge.sendKeyPress(code, down)
+    }
+
+    override fun mouse(button: Int, down: Boolean) {
+        CallbackBridge.putMouseEvent(button, down)
+    }
+
+    override fun scroll(direction: Int) {
+        CallbackBridge.sendScroll(0.0, if (direction >= 0) 1.0 else -1.0)
+    }
+
+    override fun char(c: Char) {
+        CallbackBridge.sendChar(c, 0)
+    }
+}
+
 private val fpsPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     fontFeatureSettings = "tnum"
 }
 
+/** Ukuran minimum area tampilan FPS dan RAM (dp); tombol FPS lama berukuran 84 x 26. */
+private const val FPS_HUD_MIN_WIDTH_DP = 156
+private const val FPS_HUD_MIN_HEIGHT_DP = 26
+
 /**
- * Angka FPS minimalis: teks saja tanpa kotak atau garis. Warnanya mengikuti kondisi (putih,
- * kuning, merah muda). Info RAM, panas, atau beban UI hanya muncul bila perlu. Ketuk membuka menu.
+ * Tampilan FPS dan RAM: satu pil gelap tipis berisi "58 FPS  RAM 2.1/3.6 GB", hanya dua informasi itu. Warna angka FPS
+ * mengikuti kondisi (putih, kuning, merah muda) dan RAM jadi kuning bila memori HP tinggal sedikit. Ketuk membuka menu,
+ * tempat tampilan ini bisa dimatikan (bisa juga lewat Pengaturan).
  *
- * Semua nilai dibaca di dalam fase gambar saja: angka baru hanya menggambar ulang teks ini, tanpa
- * menyusun ulang atau mengukur ulang tata letak.
+ * Seluruhnya satu gambar kanvas tanpa lapisan tambahan: satu isian bulat dan tiga potong teks, tanpa bayangan teks
+ * (pilnya yang memberi kontras). Semua nilai dibaca di dalam fase gambar saja: angka baru hanya menggambar ulang
+ * pil ini, tanpa menyusun ulang atau mengukur ulang tata letak.
  */
 @Composable
 private fun FpsText(
@@ -165,32 +216,33 @@ private fun FpsText(
     Box(
         modifier = modifier
             .size(width = btn.widthDp.dp, height = btn.heightDp.dp)
-            .drawBehind { drawFpsReadout(fps(), pinned, if (perfWarn()) perfText() else "") }
+            .drawBehind { drawFpsReadout(fps(), pinned, perfText(), perfWarn()) }
             .pointerInput(Unit) { detectTapGestures { click() } }
     )
 }
 
-private fun drawFpsPiece(cv: android.graphics.Canvas, s: String, x: Float, y: Float, size: Float, spacing: Float, color: Color, shadowPx: Float) {
+private fun drawHudText(cv: android.graphics.Canvas, s: String, x: Float, y: Float, size: Float, spacing: Float, color: Color) {
     fpsPaint.textSize = size
     fpsPaint.letterSpacing = spacing
-    fpsPaint.color = Color.Black.copy(alpha = color.alpha * 0.55f).toArgb()
-    cv.drawText(s, x, y + shadowPx, fpsPaint)
     fpsPaint.color = color.toArgb()
     cv.drawText(s, x, y, fpsPaint)
 }
 
-private fun DrawScope.drawFpsReadout(value: Int, pinned: Boolean, extra: String) {
+private fun DrawScope.drawFpsReadout(value: Int, pinned: Boolean, ram: String, ramWarn: Boolean) {
     val tint = when {
         value <= 0 -> Color.White.copy(alpha = 0.45f)
-        value >= 50 -> Color.White.copy(alpha = 0.86f)
+        value >= 50 -> Color.White.copy(alpha = 0.92f)
         value >= 25 -> ControlSkin.YellowSoft
         else -> Color(0xFFFFA399)
     }
-    val numSize = 14.dp.toPx()
+    val numSize = 13.dp.toPx()
     val labSize = 8.dp.toPx()
+    val ramSize = 9.dp.toPx()
     val gap = 3.dp.toPx()
-    val shadow = 1.dp.toPx()
+    val sep = 9.dp.toPx()
+    val padX = 9.dp.toPx()
     val num = if (value > 0) value.toString() else "--"
+    val hasRam = ram.isNotEmpty()
 
     fpsPaint.textSize = numSize
     fpsPaint.letterSpacing = 0f
@@ -198,20 +250,38 @@ private fun DrawScope.drawFpsReadout(value: Int, pinned: Boolean, extra: String)
     fpsPaint.textSize = labSize
     fpsPaint.letterSpacing = 0.1f
     val labW = fpsPaint.measureText("FPS")
-    val x0 = (size.width - (numW + gap + labW)) / 2f
-    val base = size.height / 2f + numSize * 0.36f
+    var ramW = 0f
+    if (hasRam) {
+        fpsPaint.textSize = ramSize
+        fpsPaint.letterSpacing = 0f
+        ramW = fpsPaint.measureText(ram)
+    }
 
+    val contentW = numW + gap + labW + (if (hasRam) sep + ramW else 0f)
+    val pillW = (contentW + padX * 2f).coerceAtMost(size.width)
+    val pillH = minOf(size.height, 22.dp.toPx())
+    val left = (size.width - pillW) / 2f
+    val top = (size.height - pillH) / 2f
+    drawRoundRect(
+        color = Color.Black.copy(alpha = 0.34f),
+        topLeft = Offset(left, top),
+        size = androidx.compose.ui.geometry.Size(pillW, pillH),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f)
+    )
+
+    val x0 = left + (pillW - contentW) / 2f
+    val base = top + pillH / 2f + numSize * 0.36f
     drawIntoCanvas { c ->
         val cv = c.nativeCanvas
-        drawFpsPiece(cv, num, x0, base, numSize, 0f, tint, shadow)
-        drawFpsPiece(
+        drawHudText(cv, num, x0, base, numSize, 0f, tint)
+        drawHudText(
             cv, "FPS", x0 + numW + gap, base, labSize, 0.1f,
-            if (pinned) ControlSkin.Yellow else Color.White.copy(alpha = 0.50f), shadow
+            if (pinned) ControlSkin.Yellow else Color.White.copy(alpha = 0.55f)
         )
-        if (extra.isNotEmpty()) {
-            drawFpsPiece(
-                cv, extra, x0 + numW + gap + labW + 6.dp.toPx(), base, labSize, 0f,
-                ControlSkin.Yellow.copy(alpha = 0.85f), shadow
+        if (hasRam) {
+            drawHudText(
+                cv, ram, x0 + numW + gap + labW + sep, base, ramSize, 0f,
+                if (ramWarn) ControlSkin.Yellow else Color.White.copy(alpha = 0.62f)
             )
         }
     }
@@ -263,6 +333,9 @@ fun CustomVirtualButton(
     val coroutineScope = rememberCoroutineScope()
     var turboJob by remember { mutableStateOf<Job?>(null) }
     val spec = remember(button) { skinSpecFor(button) }
+    // Makro Urutan Aksi: langkah diurai sekali per perubahan; tombol tampak ditekan selama makronya jalan.
+    val isSequence = button.isMacro && button.macroType == "SEQUENCE"
+    val script = remember(button.macroSteps) { MacroScript.parseAll(button.macroSteps) }
 
     // Nilai terbaru tombol dibaca saat dilepas dari layar, bukan salinan saat pertama disusun.
     val currentButton by rememberUpdatedState(button)
@@ -276,6 +349,11 @@ fun CustomVirtualButton(
             // Kombinasi tombol yang sedang ditahan juga dilepas (mis. tombol hilang karena mode
             // berganti ke menu saat jari masih di atasnya), kalau tidak tombolnya tetap tertahan.
             val b = currentButton
+            // Makro berulang (tahan / nyala-mati) berhenti bila tombolnya hilang dari layar; makro sekali jalan
+            // dibiarkan selesai (mis. mengetik perintah yang membuka chat).
+            if (b.isMacro && b.macroType == "SEQUENCE" && b.macroRunMode != MacroRunMode.ONCE) {
+                MacroRegistry.stop(b.id)
+            }
             val plainToggle = !b.isScroll && (
                 (b.isToggle && !(b.isMacro && b.macroType == "COMMAND")) ||
                     (b.isMacro && b.macroType == "COMBO")
@@ -367,21 +445,54 @@ fun CustomVirtualButton(
     // Tombol yang boleh memutar kamera bila digeser (hanya bila dinyalakan di Pengaturan, lihat di bawah).
     val lookDrag = button.isMouseButton || button.keyCode == LwjglGlfwKeycode.GLFW_KEY_SPACE
 
+    // Geser antar tombol (lihat ButtonSlide): tombol biasa mendaftar dengan posisinya di layar, dan cara
+    // menekan/melepasnya (termasuk tampilan tertekan) dititipkan lewat setDown. Hanya tombol "tahan = aktif".
+    val slideTarget = remember(button.id, button.isMouseButton) {
+        ButtonSlide.Target(slideable = !button.isMouseButton)
+    }
+    val applyDown = rememberUpdatedState<(Boolean) -> Unit> { down ->
+        isPressed = down
+        sendPress(down)
+    }
+    if (simple) {
+        DisposableEffect(slideTarget) {
+            slideTarget.setDown = { down -> applyDown.value(down) }
+            ButtonSlide.register(slideTarget)
+            onDispose { ButtonSlide.unregister(slideTarget) }
+        }
+    }
+
     val base = modifier
         .size(width = button.widthDp.dp, height = button.heightDp.dp)
-        .drawBehind { drawControlButton(spec, isPressed) }
+        .drawBehind { drawControlButton(spec, isPressed || (isSequence && MacroRegistry.isRunning(button.id))) }
+        .then(
+            if (simple && !button.isMouseButton) {
+                Modifier.onGloballyPositioned { c ->
+                    slideTarget.origin = c.positionInRoot()
+                    slideTarget.size = c.size.toSize()
+                }
+            } else {
+                Modifier
+            }
+        )
 
     Box(
         modifier = if (simple) {
             base.pointerInput(button.id, button.isMouseButton, button.mouseButton, button.keyCode) {
                 val slop = 6.dp.toPx()
+                val slideInset = 4.dp.toPx()
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     down.consume()
-                    isPressed = true
-                    sendPress(true)
+                    ButtonSlide.press(slideTarget)
                     // Dibaca tiap jari menyentuh tombol, jadi mengubah pengaturan langsung berlaku.
-                    val canLook = lookDrag && SettingsManager.settings.value.buttonLookDrag
+                    val settings = SettingsManager.settings.value
+                    val canLook = lookDrag && settings.buttonLookDrag
+                    // Tombol yang memutar kamera saat digeser (lompat/pukul bila "Geser kamera dari tombol" nyala)
+                    // tidak ikut berpindah tombol: geserannya sudah punya arti lain.
+                    val canSlide = settings.buttonSlide && slideTarget.slideable && !canLook
+                    // Tombol yang sedang ditekan jari ini; berpindah saat jari masuk ke tombol lain.
+                    var current = slideTarget
                     var last = down.position
                     var looking = false
                     try {
@@ -391,6 +502,15 @@ fun CustomVirtualButton(
                             if (!change.pressed) {
                                 change.consume()
                                 break
+                            }
+                            if (canSlide) {
+                                val next = ButtonSlide.find(slideTarget.origin + change.position, slideInset, current)
+                                if (next != null) {
+                                    // Tombol baru ditekan dulu, baru yang lama dilepas, supaya tidak ada jeda.
+                                    ButtonSlide.press(next)
+                                    ButtonSlide.release(current)
+                                    current = next
+                                }
                             }
                             val delta = change.position - last
                             last = change.position
@@ -406,13 +526,12 @@ fun CustomVirtualButton(
                             change.consume()
                         }
                     } finally {
-                        isPressed = false
-                        sendPress(false)
+                        ButtonSlide.release(current)
                     }
                 }
             }
         } else {
-            base.pointerInput(button.id, button.isToggle, button.isMacro, button.macroType, button.macroCommand, button.macroComboKey, button.macroComboKeys, button.macroTurboIntervalMs) {
+            base.pointerInput(button.id, button.isToggle, button.isMacro, button.macroType, button.macroCommand, button.macroComboKey, button.macroComboKeys, button.macroTurboIntervalMs, button.macroSteps, button.macroRunMode, button.macroRepeat, button.macroLoopDelayMs, button.macroJitterPercent) {
                 detectTapGestures(
                     onPress = {
                         if (button.isMacro) {
@@ -493,6 +612,29 @@ fun CustomVirtualButton(
                                         isPressed = false
                                     }
                                 }
+                                "SEQUENCE" -> {
+                                    val id = button.id
+                                    val mode = button.macroRunMode
+                                    if (MacroRegistry.isRunning(id)) {
+                                        // Ketuk saat makro berjalan = hentikan (tombol dilepas pun melepas semua tombol tertahan).
+                                        MacroRegistry.stop(id)
+                                    } else if (script.isNotEmpty()) {
+                                        val repeat = if (mode == MacroRunMode.ONCE) {
+                                            button.macroRepeat.coerceIn(1, MacroScript.MAX_REPEAT)
+                                        } else {
+                                            0 // tanpa batas, berhenti saat dilepas / diketuk lagi
+                                        }
+                                        val loopDelay = button.macroLoopDelayMs.toLong()
+                                        val jitterPct = button.macroJitterPercent
+                                        MacroRegistry.start(id, macroTypingScope) {
+                                            MacroRunner.run(BridgeMacroIO, script, repeat, loopDelay, jitterPct)
+                                        }
+                                        if (mode == MacroRunMode.HOLD) {
+                                            tryAwaitRelease()
+                                            MacroRegistry.stop(id)
+                                        }
+                                    }
+                                }
                                 "TURBO" -> {
                                     val interval = button.macroTurboIntervalMs.coerceAtLeast(30L)
                                     val downTime = (interval / 2).coerceAtLeast(15L)
@@ -504,9 +646,9 @@ fun CustomVirtualButton(
                                             turboJob = coroutineScope.launch {
                                                 while (isActive) {
                                                     sendPress(true)
-                                                    delay(downTime)
+                                                    delay(MacroRunner.jitter(downTime, button.macroJitterPercent))
                                                     sendPress(false)
-                                                    delay(upTime)
+                                                    delay(MacroRunner.jitter(upTime, button.macroJitterPercent))
                                                 }
                                             }
                                         } else {
@@ -519,9 +661,9 @@ fun CustomVirtualButton(
                                         val job = coroutineScope.launch {
                                             while (isActive) {
                                                 sendPress(true)
-                                                delay(downTime)
+                                                delay(MacroRunner.jitter(downTime, button.macroJitterPercent))
                                                 sendPress(false)
-                                                delay(upTime)
+                                                delay(MacroRunner.jitter(upTime, button.macroJitterPercent))
                                             }
                                         }
                                         tryAwaitRelease()

@@ -1,0 +1,80 @@
+# Teks tambahan (audit 12 Nov 2026): label huruf kapital, subjudul, pesan CurseForge, TextureView, impor layout, judul berbagi log, deskripsi aksesibilitas.
+SELESAI	XONG
+SIMPAN	LƯU
+KEMBALI	QUAY LẠI
+AKTIF	ĐANG DÙNG
+DIPILIH	ĐÃ CHỌN
+MENGERTI	ĐÃ HIỂU
+Hapus akun	Xóa tài khoản
+Populer	Phổ biến
+Hijau	Xanh lá
+Ungu	Tím
+Navy	Xanh navy
+Teal	Xanh mòng két
+Gagal terhubung ke CurseForge	Không thể kết nối tới CurseForge
+Memuat data dari CurseForge...	Đang tải dữ liệu từ CurseForge...
+Gagal memuat dari CurseForge	Không thể tải từ CurseForge
+Permukaan game TextureView	Bề mặt game TextureView
+Nyalakan bila tampilan game terputar 90 derajat atau terlihat miring padahal launcher landscape (kasus yang dilaporkan di Minecraft 26.x dengan renderer Zink). Sedikit lebih berat dari bawaan. Berlaku saat game dibuka lagi.	Bật nếu hình ảnh game bị xoay 90 độ hoặc trông bị nghiêng dù launcher đang ở chế độ ngang (trường hợp được báo cáo trên Minecraft 26.x với renderer Zink). Nặng hơn mặc định một chút. Áp dụng khi mở lại game.
+{0} entri dilewati atau digabung karena tidak ada padanannya di Amber (misalnya laci, mouse virtual, layer tersembunyi, dan tombol scroll kedua).	{0} mục đã bị bỏ qua hoặc gộp vì Amber không có mục tương đương (ví dụ ngăn kéo, chuột ảo, lớp ẩn và nút cuộn thứ hai).
+Semua tombol berhasil diubah. Periksa posisinya di editor kontrol.	Tất cả nút đã được chuyển đổi thành công. Hãy kiểm tra vị trí của chúng trong trình chỉnh sửa điều khiển.
+Layout ini berasal dari {0} dan diubah ke format Amber. {~1}	Bố cục này đến từ {0} và đã được chuyển sang định dạng Amber. {1}
+Log game AmberLauncher	Nhật ký game AmberLauncher
+Bagikan log game	Chia sẻ nhật ký game
+Log launcher AmberLauncher	Nhật ký launcher AmberLauncher
+Bagikan log launcher	Chia sẻ nhật ký launcher
+Batal dan keluar	Hủy và thoát
+Ubah skin & jubah	Đổi skin & áo choàng
+Hapus teks	Xóa văn bản
+# Preset kontrol dan preset bawaan (13 Nov 2026)
+Preset	Mẫu
+Preset kontrol	Mẫu điều khiển
+Simpan beberapa layout kontrol, lalu ganti kapan saja dengan satu ketukan. Layout yang sedang dipakai disimpan otomatis sebelum diganti.	Lưu nhiều bố cục điều khiển và chuyển đổi bất cứ lúc nào chỉ bằng một lần chạm. Bố cục đang dùng được tự động lưu trước khi bị thay thế.
+Nama preset	Tên mẫu
+Simpan layout saat ini	Lưu bố cục hiện tại
+Simpan nama	Lưu tên
+Impor berkas	Nhập tệp
+Belum ada preset. Simpan layout saat ini, atau impor berkas dari Amber, Pojav, Zalith, atau Mojo.	Chưa có mẫu nào. Hãy lưu bố cục hiện tại hoặc nhập tệp từ Amber, Pojav, Zalith hoặc Mojo.
+Berisi {0} tombol	Gồm {0} nút
+Pakai	Dùng
+Ubah nama	Đổi tên
+Yakin?	Chắc chắn?
+Kembalikan layout sebelumnya	Khôi phục bố cục trước đó
+Pakai preset ini?	Dùng mẫu này?
+Layout tombol saat ini akan diganti dengan preset "{0}" ({1} tombol). Layout saat ini disimpan dulu supaya bisa dikembalikan.	Bố cục nút hiện tại sẽ được thay bằng mẫu "{0}" ({1} nút). Bố cục hiện tại được lưu trước để bạn có thể khôi phục.
+Preset ini berisi {0} tombol makro yang mengetik chat atau perintah otomatis. Periksa dulu sebelum dipakai di server.	Mẫu này có {0} nút macro tự động gõ tin nhắn hoặc lệnh. Hãy kiểm tra trước khi dùng trên máy chủ.
+Preset ini memakai tombol panah. Atur tombol gerak di opsi Kontrol Minecraft ke tombol panah supaya karakter bergerak.	Mẫu này dùng các phím mũi tên. Hãy đặt phím di chuyển trong tùy chọn Điều khiển của Minecraft thành phím mũi tên để nhân vật di chuyển.
+Preset disimpan	Đã lưu mẫu
+Preset dipakai	Đã áp dụng mẫu
+Preset dihapus	Đã xóa mẫu
+Nama preset diubah	Đã đổi tên mẫu
+Gagal mengubah nama preset	Không đổi được tên mẫu
+Layout sebelumnya dikembalikan	Đã khôi phục bố cục trước đó
+Gagal menyimpan preset	Không lưu được mẫu
+Nama preset tidak boleh kosong	Tên mẫu không được để trống
+Terlalu banyak preset. Hapus salah satu dulu (maksimal {0}).	Quá nhiều mẫu. Hãy xóa bớt một mẫu trước (tối đa {0}).
+Preset tidak bisa dibaca	Không đọc được mẫu
+Layout tidak bisa disimpan sebagai preset	Không thể lưu bố cục này thành mẫu
+Preset bawaan dipulihkan	Đã khôi phục các mẫu có sẵn
+Pulihkan preset bawaan	Khôi phục mẫu có sẵn
+Standar (joystick)	Tiêu chuẩn (joystick)
+WASD tanpa analog	WASD không dùng joystick
+Panah tanpa analog	Phím mũi tên không dùng joystick
+# Dialog preset kontrol: edit, duplikat, ekspor (13 Nov 2026)
+Opsi	Tùy chọn
+Edit	Sửa
+Duplikat	Nhân bản
+Simpan layout ke sini	Lưu bố cục hiện tại vào đây
+Dipakai	Đang dùng
+Sedang dipakai	Đang được dùng
+Simpan perubahan	Lưu thay đổi
+Mengedit preset "{0}"	Đang chỉnh sửa mẫu "{0}"
+Setelah selesai mengedit, buka Preset lagi lalu pilih Simpan perubahan.	Khi chỉnh xong, hãy mở lại Mẫu và chọn Lưu thay đổi.
+Preset diperbarui	Đã cập nhật mẫu
+Gagal memperbarui preset	Không cập nhật được mẫu
+Preset diduplikat	Đã nhân bản mẫu
+# Tampilan FPS dan RAM di game (14 Nov 2026)
+Tampilan di game	Hiển thị trong game
+Tampilkan FPS dan RAM	Hiện FPS và RAM
+Angka FPS dan pemakaian RAM di sudut layar game. Ketuk angkanya di dalam game untuk membuka menu dan mematikannya.	FPS và mức dùng RAM ở góc màn hình game. Chạm vào các con số trong game để mở menu và tắt đi.
+Angka FPS dan pemakaian RAM di sudut layar game	FPS và mức dùng RAM ở góc màn hình game
